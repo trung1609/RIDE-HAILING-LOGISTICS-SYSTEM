@@ -37,8 +37,10 @@ public class DriverController {
     }
 
     @PutMapping("/{driverId}/status")
-    @PreAuthorize("hasRole('DRIVER') or (hasRole('DRIVER') and authentication.principal.user.id == #driverId)")
-    public ResponseEntity<ApiResponse<String>> toggleDriverActiveStatus(@PathVariable Long driverId, @RequestParam boolean isActive) throws ResourceNotFoundException, BadRequestException {
+    @PreAuthorize("hasRole('DRIVER') or (hasRole('DRIVER') and #currentDriverId == #driverId)")
+    public ResponseEntity<ApiResponse<String>> toggleDriverActiveStatus(@PathVariable Long driverId,
+                                                                        @RequestParam boolean isActive,
+                                                                        @RequestHeader(name = "X-User-Id") Long currentDriverId) throws ResourceNotFoundException, BadRequestException {
         driverService.toggleDriverActiveStatus(driverId, isActive);
 
         ApiResponse<String> response = ApiResponse.<String>builder()
@@ -51,8 +53,10 @@ public class DriverController {
     }
 
     @PutMapping("/{driverId}/vehicle")
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('DRIVER') and authentication.principal.user.id == #driverId)")
-    public ResponseEntity<ApiResponse<UserResponse>> updateDriverVehicle(@PathVariable Long driverId, @Valid @RequestBody DriverUpdateRequest request) throws ResourceNotFoundException, ResourceConflictException, BadRequestException {
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DRIVER') and #currentDriverId == #driverId)")
+    public ResponseEntity<ApiResponse<UserResponse>> updateDriverVehicle(@PathVariable Long driverId,
+                                                                         @Valid @RequestBody DriverUpdateRequest request,
+                                                                         @RequestHeader(name = "X-User-Id") Long currentDriverId) throws ResourceNotFoundException, ResourceConflictException, BadRequestException {
         ApiResponse<UserResponse> response = driverService.updateDriverVehicle(driverId, request);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

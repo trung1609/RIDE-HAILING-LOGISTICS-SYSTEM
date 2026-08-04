@@ -27,7 +27,7 @@ public class UserMapper {
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setFullName(request.getFullName());
-        user.setRole(Role.CUSTOMER);
+        user.setRole(request.getRole() != null ? Role.valueOf(request.getRole().toUpperCase()) : Role.CUSTOMER);
         return user;
     }
 

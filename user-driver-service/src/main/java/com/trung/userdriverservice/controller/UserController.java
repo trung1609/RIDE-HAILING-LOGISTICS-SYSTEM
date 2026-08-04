@@ -43,8 +43,10 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or authentication.principal.user.id = #id")
-    public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable Long id) throws ResourceNotFoundException {
+    @PreAuthorize("hasRole('ADMIN') or #currentUserId == #id")
+    public ResponseEntity<ApiResponse<UserResponse>> getUserById(
+            @PathVariable Long id,
+            @RequestHeader(name = "X-User-Id") Long currentUserId) throws ResourceNotFoundException {
         return ResponseEntity.ok(userService.getUserById(id));
     }
 }

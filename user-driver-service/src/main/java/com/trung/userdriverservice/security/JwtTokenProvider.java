@@ -56,33 +56,4 @@ public class JwtTokenProvider {
     public String getPhoneNumberFromToken(String token) {
         return getClaimsFromToken(token).getSubject();
     }
-
-    public String getTypeFromToken(String token){
-        return getClaimsFromToken(token).get("type").toString();
-    }
-
-    public boolean validateToken(String authToken) {
-        try {
-            Jwts.parserBuilder().setSigningKey(getSecretKey()).build().parseClaimsJws(authToken);
-            return true;
-        } catch (MalformedJwtException e) {
-            log.error("Invalid JWT token: {}", e.getMessage());
-            return false;
-        } catch (ExpiredJwtException e) {
-            log.error("Expired JWT token: {}", e.getMessage());
-            return false;
-        } catch (UnsupportedJwtException e) {
-            log.error("Unsupported JWT token: {}", e.getMessage());
-            return false;
-        } catch (IllegalArgumentException e) {
-            log.error("JWT claims string is empty: {}", e.getMessage());
-            return false;
-        } catch (SignatureException e) {
-            log.error("Invalid JWT signature: {}", e.getMessage());
-            return false;
-        } catch (Exception e) {
-            log.error("JWT claims exception: {}", e.getMessage());
-            return false;
-        }
-    }
 }
