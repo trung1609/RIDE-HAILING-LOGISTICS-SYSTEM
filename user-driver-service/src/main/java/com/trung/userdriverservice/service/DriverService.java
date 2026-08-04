@@ -12,4 +12,6 @@ public interface DriverService {
     ApiResponse<UserResponse> registerDriver(DriverRegisterRequest request) throws ResourceConflictException;
     ApiResponse<UserResponse> updateDriverVehicle(Long driverId, DriverUpdateRequest request) throws ResourceNotFoundException, ResourceConflictException, BadRequestException;
     void toggleDriverActiveStatus(Long driverId, boolean isActive) throws ResourceNotFoundException, BadRequestException;
+
+    void updateDriverStatusInternal(Long driverId, boolean isOnline) throws ResourceNotFoundException;
 }

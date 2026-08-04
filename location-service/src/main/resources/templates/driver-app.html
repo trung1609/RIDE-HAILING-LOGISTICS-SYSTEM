@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Location Simulator</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+<body>
+<h2>App Tài Xế (Mô phỏng)</h2>
+<button id="btnConnect" onclick="connect()">Bật App (Đi làm)</button>
+<button id="btnDisconnect" onclick="disconnect()" disabled>Tắt App (Nghỉ ngơi)</button>
+<div id="status" style="margin-top: 20px; font-weight: bold;">Trạng thái: OFFLINE</div>
+<ul id="log" style="color: blue;"></ul>
+
+<script>
+    let stompClient = null;
+    let locationInterval = null;
+
+    // ID của tài xế bạn đang muốn test (ví dụ ID = 8)
+    const DRIVER_ID = "8";
+
+    function connect() {
+        let socket = new SockJS('http://localhost:8080/ws-location');
+        stompClient = Stomp.over(socket);
+
+        // Bổ sung header driverId ngay khi kết nối (Handshake)
+        let headers = {"driverId": DRIVER_ID};
+
+        stompClient.connect(headers, function (frame) {
+            document.getElementById('status').innerText = "Trạng thái: ONLINE (Đang gửi tọa độ...)";
+            document.getElementById('btnConnect').disabled = true;
+            document.getElementById('btnDisconnect').disabled = false;
+
+            locationInterval = setInterval(() => {
+                let lat = 21.0285 + (Math.random() * 0.001);
+                let lng = 105.8542 + (Math.random() * 0.001);
+                let payload = JSON.stringify({"longitude": lng, "latitude": lat});
+
+                // Gửi tin nhắn định kỳ
+                stompClient.send("/app/driver/location", {"driverId": DRIVER_ID}, payload);
+
+                let logEl = document.getElementById('log');
+                logEl.innerHTML += `<li>Đã gửi: [${lng.toFixed(4)}, ${lat.toFixed(4)}]</li>`;
+            }, 3000);
+        });
+    }
+
+    function disconnect() {
+        if (stompClient !== null) {
+            clearInterval(locationInterval);
+            stompClient.disconnect();
+        }
+        document.getElementById('status').innerText = "Trạng thái: OFFLINE";
+        document.getElementById('btnConnect').disabled = false;
+        document.getElementById('btnDisconnect').disabled = true;
+        document.getElementById('log').innerHTML += `<li style="color:red">Đã ngắt kết nối</li>`;
+    }
+</script>
+</body>
+</html>

@@ -13,17 +13,21 @@ import com.trung.userdriverservice.mapper.UserMapper;
 import com.trung.userdriverservice.repository.DriverProfileRepository;
 import com.trung.userdriverservice.repository.UserRepository;
 import com.trung.userdriverservice.service.DriverService;
+import com.trung.userdriverservice.service.client.LocationClient;
 import com.trung.userdriverservice.util.enums.DriverStatus;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DriverServiceImpl implements DriverService {
     private final UserRepository userRepository;
     private final DriverProfileRepository driverProfileRepository;
     private final UserMapper userMapper;
+    private final LocationClient locationClient;
 
     @Override
     @Transactional
@@ -83,7 +87,27 @@ public class DriverServiceImpl implements DriverService {
             throw new BadRequestException("Không thể thay đổi trạng thái khi tài xế đang trong chuyến đi.");
         }
 
-        profile.setStatus(isActive ? DriverStatus.ONLINE : DriverStatus.OFFLINE);
+        DriverStatus newStatus = isActive ? DriverStatus.ONLINE : DriverStatus.OFFLINE;
+        profile.setStatus(newStatus);
+        driverProfileRepository.save(profile);
+
+        if (newStatus == DriverStatus.OFFLINE) {
+            try {
+                locationClient.removeDriverLocationInternal(driverId);
+                log.info("Đã gửi yêu cầu xóa tọa độ tài xế {} khỏi Redis Geo", driverId);
+            } catch (Exception e) {
+                log.error("Không thể kết nối sang location-service để xóa vị trí tài xế {}: {}", driverId, e.getMessage());
+            }
+        }
+    }
+
+    @Override
+    public void updateDriverStatusInternal(Long driverId, boolean isOnline) throws ResourceNotFoundException {
+        DriverProfile profile = driverProfileRepository.findById(driverId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ tài xế."));
+
+        DriverStatus newStatus = isOnline ? DriverStatus.ONLINE : DriverStatus.OFFLINE;
+        profile.setStatus(newStatus);
         driverProfileRepository.save(profile);
     }
 }
