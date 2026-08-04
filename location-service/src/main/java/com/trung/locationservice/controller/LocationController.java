@@ -27,4 +27,12 @@ public class LocationController {
         locationService.updateDriverLocation(driverId, request);
         return ResponseEntity.ok("Đã cập nhật vị trí");
     }
+    @GetMapping("/nearby")
+    public ResponseEntity<List<DriverLocationResponse>> getNearbyDriversForFrontend(
+            @RequestParam double longitude,
+            @RequestParam double latitude,
+            @RequestParam(defaultValue = "5.0") double radius) {
+
+        return ResponseEntity.ok(locationService.getNearbyDrivers(longitude, latitude, radius));
+    }
 }
