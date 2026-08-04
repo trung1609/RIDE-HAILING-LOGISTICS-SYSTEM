@@ -2,6 +2,8 @@ package com.trung.userdriverservice.mapper;
 
 import com.trung.userdriverservice.dto.request.DriverRegisterRequest;
 import com.trung.userdriverservice.dto.request.UserRegisterRequest;
+import com.trung.userdriverservice.dto.response.DriverInternalResponse;
+import com.trung.userdriverservice.dto.response.UserPaymentInfoResponse;
 import com.trung.userdriverservice.dto.response.UserResponse;
 import com.trung.userdriverservice.entity.DriverProfile;
 import com.trung.userdriverservice.entity.User;
@@ -45,8 +47,7 @@ public class UserMapper {
         profile.setVehicleType(request.getVehicleType());
         profile.setLicensePlate(request.getLicensePlate());
         profile.setVehicleModel(request.getVehicleModel());
-        profile.setIsActive(false);
-        profile.setStatus(DriverStatus.IDLE);
+        profile.setStatus(DriverStatus.OFFLINE);
         return profile;
     }
 
@@ -58,6 +59,28 @@ public class UserMapper {
                 .fullName(user.getFullName())
                 .role(user.getRole())
                 .createdAt(user.getCreatedAt())
+                .build();
+    }
+
+    public DriverInternalResponse toDriverInternalResponse(DriverProfile profile) {
+        return DriverInternalResponse.builder()
+                .driverId(profile.getDriverId())
+                .fullName(profile.getUser().getFullName())
+                .phoneNumber(profile.getUser().getPhoneNumber())
+                .vehicleType(profile.getVehicleType())
+                .licensePlate(profile.getLicensePlate())
+                .vehicleModel(profile.getVehicleModel())
+                .status(profile.getStatus())
+                .build();
+    }
+
+    public UserPaymentInfoResponse toUserPaymentInfoResponse(User user) {
+        return UserPaymentInfoResponse.builder()
+                .userId(user.getId())
+                .fullName(user.getFullName())
+                .phoneNumber(user.getPhoneNumber())
+                .email(user.getEmail())
+                .role(user.getRole())
                 .build();
     }
 }

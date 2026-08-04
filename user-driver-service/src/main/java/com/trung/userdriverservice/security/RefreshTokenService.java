@@ -1,5 +1,6 @@
 package com.trung.userdriverservice.security;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
@@ -52,6 +53,14 @@ public class RefreshTokenService {
         return refreshToken;
     }
 
+    public String getPhoneNumberFromRefreshToken(String token){
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+        return claims.getSubject();
+    }
     public boolean validateRefreshToken(String phoneNumber, String requestRefreshToken) {
         String redisKey = "refresh_token:" + phoneNumber;
         String storedToken = redisTemplate.opsForValue().get(redisKey);

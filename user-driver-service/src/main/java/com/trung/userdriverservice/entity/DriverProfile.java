@@ -36,10 +36,8 @@ public class DriverProfile {
     @Column(nullable = false, length = 50)
     private String vehicleModel;
 
-    private Boolean isActive = false;
-
     @Enumerated(EnumType.STRING)
-    private DriverStatus status;
+    private DriverStatus status = DriverStatus.OFFLINE;
 
     @UpdateTimestamp
     @Column(name = "updated_at")

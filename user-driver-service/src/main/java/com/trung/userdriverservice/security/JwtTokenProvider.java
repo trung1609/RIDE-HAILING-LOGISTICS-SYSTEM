@@ -45,13 +45,20 @@ public class JwtTokenProvider {
                 .compact();
     }
 
-    public String getPhoneNumberFromToken(String token) {
-        Claims claims = Jwts.parserBuilder()
+    public Claims getClaimsFromToken(String token) {
+        return Jwts.parserBuilder()
                 .setSigningKey(getSecretKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
-        return claims.getSubject();
+    }
+
+    public String getPhoneNumberFromToken(String token) {
+        return getClaimsFromToken(token).getSubject();
+    }
+
+    public String getTypeFromToken(String token){
+        return getClaimsFromToken(token).get("type").toString();
     }
 
     public boolean validateToken(String authToken) {

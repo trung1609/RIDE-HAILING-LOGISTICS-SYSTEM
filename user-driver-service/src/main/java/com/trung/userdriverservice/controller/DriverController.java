@@ -4,6 +4,7 @@ import com.trung.userdriverservice.dto.request.DriverRegisterRequest;
 import com.trung.userdriverservice.dto.request.DriverUpdateRequest;
 import com.trung.userdriverservice.dto.response.ApiResponse;
 import com.trung.userdriverservice.dto.response.UserResponse;
+import com.trung.userdriverservice.exception.BadRequestException;
 import com.trung.userdriverservice.exception.ResourceConflictException;
 import com.trung.userdriverservice.exception.ResourceNotFoundException;
 import com.trung.userdriverservice.service.DriverService;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -35,7 +37,8 @@ public class DriverController {
     }
 
     @PutMapping("/{driverId}/status")
-    public ResponseEntity<ApiResponse<String>> toggleDriverActiveStatus(@PathVariable Long driverId, @RequestParam boolean isActive) throws ResourceNotFoundException {
+    @PreAuthorize("hasRole('DRIVER') or (hasRole('DRIVER') and authentication.principal.user.id == #driverId)")
+    public ResponseEntity<ApiResponse<String>> toggleDriverActiveStatus(@PathVariable Long driverId, @RequestParam boolean isActive) throws ResourceNotFoundException, BadRequestException {
         driverService.toggleDriverActiveStatus(driverId, isActive);
 
         ApiResponse<String> response = ApiResponse.<String>builder()
@@ -48,7 +51,8 @@ public class DriverController {
     }
 
     @PutMapping("/{driverId}/vehicle")
-    public ResponseEntity<ApiResponse<UserResponse>> updateDriverVehicle(@PathVariable Long driverId, @Valid @RequestBody DriverUpdateRequest request) throws ResourceNotFoundException, ResourceConflictException {
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('DRIVER') and authentication.principal.user.id == #driverId)")
+    public ResponseEntity<ApiResponse<UserResponse>> updateDriverVehicle(@PathVariable Long driverId, @Valid @RequestBody DriverUpdateRequest request) throws ResourceNotFoundException, ResourceConflictException, BadRequestException {
         ApiResponse<UserResponse> response = driverService.updateDriverVehicle(driverId, request);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

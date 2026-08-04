@@ -6,6 +6,7 @@ import com.trung.userdriverservice.dto.response.ApiResponse;
 import com.trung.userdriverservice.dto.response.UserResponse;
 import com.trung.userdriverservice.entity.DriverProfile;
 import com.trung.userdriverservice.entity.User;
+import com.trung.userdriverservice.exception.BadRequestException;
 import com.trung.userdriverservice.exception.ResourceConflictException;
 import com.trung.userdriverservice.exception.ResourceNotFoundException;
 import com.trung.userdriverservice.mapper.UserMapper;
@@ -50,12 +51,12 @@ public class DriverServiceImpl implements DriverService {
     }
 
     @Override
-    public ApiResponse<UserResponse> updateDriverVehicle(Long driverId, DriverUpdateRequest request) throws ResourceNotFoundException, ResourceConflictException {
+    public ApiResponse<UserResponse> updateDriverVehicle(Long driverId, DriverUpdateRequest request) throws ResourceNotFoundException, ResourceConflictException, BadRequestException {
         DriverProfile profile = driverProfileRepository.findById(driverId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ tài xế."));
 
-        if (profile.getStatus() == DriverStatus.ON_TRIP) {
-            throw new IllegalStateException("Không thể cập nhật thông tin xe khi đang trong chuyến đi.");
+        if (profile.getStatus() == DriverStatus.BUSY) {
+            throw new BadRequestException("Không thể cập nhật thông tin xe khi đang trong chuyến đi.");
         }
 
         if (!profile.getLicensePlate().equals(request.getLicensePlate()) &&
@@ -74,11 +75,15 @@ public class DriverServiceImpl implements DriverService {
     }
 
     @Override
-    public void toggleDriverActiveStatus(Long driverId, boolean isActive) throws ResourceNotFoundException {
+    public void toggleDriverActiveStatus(Long driverId, boolean isActive) throws ResourceNotFoundException, BadRequestException {
         DriverProfile profile = driverProfileRepository.findById(driverId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ tài xế."));
 
-        profile.setIsActive(isActive);
+        if (profile.getStatus() == DriverStatus.BUSY) {
+            throw new BadRequestException("Không thể thay đổi trạng thái khi tài xế đang trong chuyến đi.");
+        }
+
+        profile.setStatus(isActive ? DriverStatus.ONLINE : DriverStatus.OFFLINE);
         driverProfileRepository.save(profile);
     }
 }

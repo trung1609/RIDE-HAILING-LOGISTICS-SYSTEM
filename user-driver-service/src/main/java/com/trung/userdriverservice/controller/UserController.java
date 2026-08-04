@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -36,11 +37,13 @@ public class UserController {
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PageResponseDTO<UserResponse>> getAllUser(@ModelAttribute PageRequestDTO requestDTO) throws ResourceNotFoundException {
         return ResponseEntity.ok(userService.getAllUsers(requestDTO));
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or authentication.principal.user.id = #id")
     public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable Long id) throws ResourceNotFoundException {
         return ResponseEntity.ok(userService.getUserById(id));
     }
