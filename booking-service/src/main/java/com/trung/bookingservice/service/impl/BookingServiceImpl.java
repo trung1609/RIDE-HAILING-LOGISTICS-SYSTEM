@@ -43,6 +43,15 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public BookingResponse createBooking(Long customerId, BookingRequest request) throws BadRequestException {
+
+        String spamKey = "customer:spam:" + customerId;
+        Boolean isSpamming = redisTemplate.hasKey(spamKey);
+
+        if (Boolean.TRUE.equals(isSpamming)) {
+            log.warn("Khách hàng {} đang thao tác quá nhanh, chặn spam!", customerId);
+            throw new BadRequestException("Hệ thống đang xử lý yêu cầu trước đó. Vui lòng thử lại sau 5 giây!");
+        }
+
         boolean hasActiveBooking = bookingRepository.existsByCustomerIdAndStatusIn(
                 customerId,
                 List.of(
@@ -56,6 +65,8 @@ public class BookingServiceImpl implements BookingService {
         if (hasActiveBooking) {
             throw new BadRequestException("Bạn đang có một chuyến đi chưa hoàn thành. Không thể đặt thêm xe lúc này!");
         }
+
+        redisTemplate.opsForValue().set(spamKey, "locked", 5, TimeUnit.SECONDS);
         // 1. Tính toán động khoảng cách chuyến đi và giá tiền
         double distance = LocationUtils.calculateDistance(
                 request.getStartLatitude(), request.getStartLongitude(),
@@ -133,8 +144,64 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public BookingResponse cancelBooking(Long customerId, Long bookingId) throws ResourceNotFoundException, BadRequestException {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chuyến đi."));
+
+        if (!customerId.equals(booking.getCustomerId())) {
+            throw new BadRequestException("Bạn không có quyền thao tác trên chuyến đi này.");
+        }
+
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new BadRequestException("Không thể hủy chuyến đi này. Trạng thái hiện tại: " + booking.getStatus());
+        }
+
+        booking.setStatus(BookingStatus.CANCELLED);
+        bookingRepository.save(booking);
+
+        log.info("Khách hàng {} đã chủ động hủy chuyến đi #{}", customerId, bookingId);
+
+        List<DriverNearbyResponse> nearbyDrivers = locationClient.getNearbyDrivers(
+                booking.getStartLongitude(), booking.getStartLatitude(), 3.0
+        );
+        if (!nearbyDrivers.isEmpty()) {
+            Long invitedDriverId = nearbyDrivers.get(0).getDriverId();
+            redisTemplate.delete("drivers:reserved:" + invitedDriverId);
+
+            // Bắn WebSocket báo cho tài xế ẩn hộp thoại
+            BookingResponse cancelResponse = convertToResponse(booking, 0.0);
+            messagingTemplate.convertAndSendToUser(
+                    invitedDriverId.toString(),
+                    "/queue/driver/match",
+                    cancelResponse
+            );
+        }
+
+        BookingResponse response = convertToResponse(booking, LocationUtils.calculateDistance(
+                booking.getStartLatitude(), booking.getStartLongitude(),
+                booking.getEndLatitude(), booking.getEndLongitude()
+        ));
+
+        // Bắn WebSocket báo về cho chính Khách hàng để cập nhật giao diện
+        messagingTemplate.convertAndSendToUser(
+                booking.getCustomerId().toString(),
+                "/queue/booking/status",
+                response
+        );
+
+        return response;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public BookingResponse acceptBooking(Long driverId, Long bookingId) throws BadRequestException {
         log.info("Tài xế {} đang yêu cầu nhận chuyến đi có ID = {}", driverId, bookingId);
+        String reservedBookingId = redisTemplate.opsForValue().get("drivers:reserved:" + driverId);
+
+        if (reservedBookingId == null || !reservedBookingId.equals(bookingId.toString())) {
+            log.error("CẢNH BÁO BẢO MẬT: Tài xế {} cố tình nhận cuốc xe #{} không được phân công cho mình!", driverId, bookingId);
+            throw new BadRequestException("Thao tác thất bại: Cuốc xe này không dành cho bạn, hoặc đã bị khách hàng hủy/hết hạn!");
+        }
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy chuyến đi."));
 

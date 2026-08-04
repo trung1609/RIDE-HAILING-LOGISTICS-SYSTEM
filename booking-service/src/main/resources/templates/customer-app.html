@@ -23,7 +23,15 @@
 <div id="trip-card"
      style="margin-top: 20px; padding: 15px; background-color: #e2f0d9; border: 1px solid #c8e1b7; display: none;">
     <h3 style="color: #385723; margin-top: 0;">🚗 TRẠNG THÁI CHUYẾN ĐI HIỆN TẠI</h3>
-    <p id="trip-status-text" style="font-size: 16px; font-weight: bold; color: #274e13;"></p>
+    <p style="font-size: 16px; font-weight: bold; color: #274e13;">
+        <span id="trip-status-text"></span>
+        <span id="customer-timer" style="color: red; margin-left: 10px; display: none;"></span>
+    </p>
+
+    <button id="btnCancelTrip" onclick="cancelCurrentTrip()"
+            style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; display: none;">
+        HỦY CHUYẾN
+    </button>
 </div>
 
 <h3>Nhật ký chuyến đi:</h3>
@@ -32,14 +40,14 @@
 <script>
     let stompClient = null;
     let customerId = null;
+    let currentBookingId = null;
+    let customerTimerInterval = null; // Biến lưu đếm ngược
 
     function parseJwt(token) {
         try {
             let base64Url = token.split('.')[1];
             let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-            let jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
+            let jsonPayload = decodeURIComponent(window.atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
             return JSON.parse(jsonPayload);
         } catch (e) {
             return null;
@@ -52,31 +60,35 @@
             alert("Vui lòng dán token vào!");
             return;
         }
-
         let cleanToken = rawToken.startsWith("Bearer ") ? rawToken.replace("Bearer ", "") : rawToken;
 
         let decoded = parseJwt(cleanToken);
-        if (decoded && (decoded.userId || decoded.id || decoded.sub)) {
-            customerId = decoded.userId || decoded.id || decoded.sub;
-        } else {
-            customerId = "1";
-        }
+        customerId = (decoded && (decoded.userId || decoded.id || decoded.sub)) || "1";
 
         let socket = new SockJS('http://localhost:8080/ws-booking');
         stompClient = Stomp.over(socket);
 
-        stompClient.connect({"userId": customerId.toString()}, function (frame) {
+        stompClient.connect({"userId": customerId.toString()}, function () {
             document.getElementById('status').innerText = `Trạng thái: Đã kết nối hệ thống (Khách hàng ID: ${customerId}). Sẵn sàng đặt xe!`;
             document.getElementById('btnBook').disabled = false;
             document.getElementById('btnConnect').disabled = true;
 
-            // Đăng ký nhận thông báo thay đổi trạng thái cuốc xe từ tài xế
             stompClient.subscribe('/user/queue/booking/status', function (message) {
                 let bookingInfo = JSON.parse(message.body);
+                currentBookingId = bookingInfo.bookingId;
 
-                // Hiển thị bảng trạng thái lớn
                 document.getElementById('trip-card').style.display = "block";
                 document.getElementById('trip-status-text').innerText = `Mã chuyến: #${bookingInfo.bookingId} | Trạng thái: ${bookingInfo.status} | Tài xế ID: ${bookingInfo.driverId || 'Đang tìm...'}`;
+
+                // Xử lý nút Hủy và Đồng hồ đếm ngược
+                if (bookingInfo.status === 'PENDING') {
+                    document.getElementById('btnCancelTrip').style.display = "inline-block";
+                } else {
+                    document.getElementById('btnCancelTrip').style.display = "none";
+                    // Nếu tài xế nhận hoặc cuốc bị hủy -> Dừng đếm ngược
+                    clearInterval(customerTimerInterval);
+                    document.getElementById('customer-timer').style.display = "none";
+                }
 
                 let logEl = document.getElementById('log');
                 let color = "orange";
@@ -84,10 +96,29 @@
                 else if (bookingInfo.status === 'ARRIVED') color = "purple";
                 else if (bookingInfo.status === 'IN_PROGRESS') color = "darkblue";
                 else if (bookingInfo.status === 'COMPLETED') color = "green";
+                else if (bookingInfo.status === 'CANCELLED') color = "red";
 
                 logEl.innerHTML += `<li style="font-weight:bold; color:${color}">CẬP NHẬT CHUYẾN ĐI [ID: ${bookingInfo.bookingId}]: Chuyển sang trạng thái ${bookingInfo.status}</li>`;
             });
         });
+    }
+
+    function startCustomerTimer() {
+        clearInterval(customerTimerInterval);
+        let timeLeft = 20;
+        let timerEl = document.getElementById('customer-timer');
+        timerEl.style.display = "inline";
+        timerEl.innerText = `(Chờ tài xế: ${timeLeft}s)`;
+
+        customerTimerInterval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft > 0) {
+                timerEl.innerText = `(Chờ tài xế: ${timeLeft}s)`;
+            } else {
+                clearInterval(customerTimerInterval);
+                timerEl.innerText = `(Đang xử lý...)`;
+            }
+        }, 1000);
     }
 
     function bookRide() {
@@ -103,26 +134,69 @@
 
         fetch('http://localhost:8080/api/v1/bookings', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + cleanToken
-            },
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cleanToken},
             body: JSON.stringify(payload)
         })
-            .then(res => {
-                if (!res.ok) throw new Error("Mã lỗi hệ thống: " + res.status);
+            .then(async res => {
+                if (!res.ok) {
+                    let errorData = await res.json().catch(() => ({}));
+                    throw new Error(errorData.error || errorData.message || "Mã lỗi hệ thống: " + res.status);
+                }
                 return res.json();
             })
             .then(data => {
                 let logEl = document.getElementById('log');
-                let formattedPrice = Math.round(data.price).toLocaleString('vi-VN');
-                logEl.innerHTML += `<li style="color:green">Đã gửi yêu cầu đặt xe thành công! Mã chuyến: #${data.bookingId}. Khoảng cách: ${data.distanceInKm.toFixed(2)} km. Giá: ${formattedPrice} VND. Trạng thái: ${data.status}</li>`;
+                if (data.status === 'CANCELLED') {
+                    alert("❌ ĐẶT XE THẤT BẠI: Hiện tại tất cả tài xế trong khu vực đều đang bận. Vui lòng thử lại sau!");
+                    document.getElementById('trip-card').style.display = "none";
+                    currentBookingId = null;
+                    logEl.innerHTML += `<li style="color:red; font-weight:bold">HỆ THỐNG: Đặt xe thất bại (Mã chuyến #${data.bookingId}). Không có tài xế rảnh!</li>`;
+                    return;
+                }
+
+                currentBookingId = data.bookingId;
+                document.getElementById('trip-card').style.display = "block";
+                document.getElementById('trip-status-text').innerText = `Mã chuyến: #${data.bookingId} | Trạng thái: ${data.status} | Tài xế ID: Đang tìm...`;
+                document.getElementById('btnCancelTrip').style.display = "inline-block";
+
+                // Bắt đầu đếm ngược 20s
+                startCustomerTimer();
+
+                logEl.innerHTML += `<li style="color:green">Đã gửi yêu cầu đặt xe thành công! Mã chuyến: #${data.bookingId}. Giá: ${Math.round(data.price).toLocaleString('vi-VN')} VND.</li>`;
             })
             .catch(err => {
-                let logEl = document.getElementById('log');
-                logEl.innerHTML += `<li style="color:red; font-weight:bold">Yêu cầu thất bại: ${err.message}</li>`;
-                console.error("Lỗi chi tiết:", err);
+                alert("⚠️ ĐẶT XE THẤT BẠI: " + err.message);
+                document.getElementById('log').innerHTML += `<li style="color:red; font-weight:bold">Yêu cầu thất bại: ${err.message}</li>`;
             });
+    }
+
+    function cancelCurrentTrip() {
+        if (!currentBookingId) return;
+        if (!confirm("Bạn có chắc chắn muốn hủy cuốc xe này không?")) return;
+
+        let rawToken = document.getElementById('token').value.trim();
+        let cleanToken = rawToken.startsWith("Bearer ") ? rawToken.replace("Bearer ", "") : rawToken;
+        let decoded = parseJwt(cleanToken);
+        let userId = (decoded && (decoded.userId || decoded.id || decoded.sub)) || "1";
+
+        fetch(`http://localhost:8080/api/v1/bookings/${currentBookingId}/cancel`, {
+            method: 'PUT',
+            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': userId.toString()}
+        })
+            .then(async res => {
+                if (!res.ok) {
+                    let errorData = await res.json().catch(() => ({}));
+                    throw new Error(errorData.error || errorData.message || "Không thể hủy chuyến!");
+                }
+                return res.json();
+            })
+            .then(data => {
+                alert("Đã hủy chuyến đi thành công!");
+                document.getElementById('btnCancelTrip').style.display = "none";
+                clearInterval(customerTimerInterval); // Dừng đếm ngược
+                document.getElementById('customer-timer').style.display = "none";
+            })
+            .catch(err => alert("⚠️ KHÔNG THỂ HỦY CHUYẾN: " + err.message));
     }
 </script>
 </body>

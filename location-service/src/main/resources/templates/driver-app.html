@@ -17,7 +17,10 @@
 
 <div id="match-box"
      style="margin-top: 20px; padding: 15px; background-color: #fff3cd; border: 1px solid #ffeba8; display: none;">
-    <h3 id="box-title" style="color: #856404; margin-top: 0;">🔔 CÓ CUỐC XE MỚI!</h3>
+    <h3 style="color: #856404; margin-top: 0;">
+        <span id="box-title">🔔 CÓ CUỐC XE MỚI!</span>
+        <span id="driver-timer" style="color: red; margin-left: 15px; font-size: 16px;"></span>
+    </h3>
     <p id="match-info"></p>
 
     <div id="action-buttons">
@@ -36,13 +39,13 @@
     let locationInterval = null;
     let currentBookingId = null;
     let DRIVER_ID = null;
+    let driverTimerInterval = null; // Biến lưu đếm ngược tài xế
 
     function connect() {
         const driverIdPrompt = prompt("Nhập ID tài xế (Driver) để mô phỏng định vị GPS:");
         if (!driverIdPrompt) return;
         DRIVER_ID = driverIdPrompt.trim();
 
-        // 1. Kết nối kênh định vị
         let locSocket = new SockJS('http://localhost:8080/ws-location');
         stompLocationClient = Stomp.over(locSocket);
 
@@ -62,7 +65,6 @@
             }, 4000);
         });
 
-        // 2. Kết nối kênh nhận Booking
         let bookSocket = new SockJS('http://localhost:8080/ws-booking');
         stompBookingClient = Stomp.over(bookSocket);
 
@@ -70,36 +72,51 @@
             stompBookingClient.subscribe('/user/queue/driver/match', function (message) {
                 let booking = JSON.parse(message.body);
 
-                // NẾU NHẬN ĐƯỢC TÍN HIỆU HỦY CUỐC XE XUỐNG
                 if (booking.status === 'CANCELLED') {
                     let logEl = document.getElementById('log');
                     logEl.innerHTML += `<li style="color:gray">HỆ THỐNG: Cuốc xe #${booking.bookingId} đã hết hạn hoặc bị hủy!</li>`;
 
-                    // Chỉ ẩn bảng khi cuốc bị hủy chính là cuốc đang hiển thị trên màn hình tài xế
                     if (currentBookingId && booking.bookingId === currentBookingId) {
                         document.getElementById('match-box').style.display = "none";
-                        currentBookingId = null; // Reset ID chuyến đi hiện tại
+                        clearInterval(driverTimerInterval); // Xóa đếm ngược
+                        currentBookingId = null;
                     }
                     return;
                 }
 
-                console.log("Đang nhận cuốc xe có ID:", booking.bookingId);
                 currentBookingId = booking.bookingId;
                 let roundedPrice = Math.round(booking.price).toLocaleString('vi-VN');
                 document.getElementById('box-title').innerText = "🔔 CÓ CUỐC XE MỚI!";
                 document.getElementById('match-info').innerHTML = `Khách hàng ID: ${booking.customerId}<br>Quãng đường: ${booking.distanceInKm.toFixed(2)} km<br>Thu nhập ước tính: <b>${roundedPrice} VND</b>`;
-
-                // Hiển thị nút Nhận cuốc ban đầu
                 document.getElementById('action-buttons').innerHTML = `<button onclick="acceptRide()" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer;">NHẬN CUỐC</button>`;
                 document.getElementById('match-box').style.display = "block";
 
-                let logEl = document.getElementById('log');
-                logEl.innerHTML += `<li style="color:red; font-weight:bold">HỆ THỐNG: Tài xế ${DRIVER_ID} nhận được lời mời chuyến đi #${currentBookingId}!</li>`;
+                // Khởi động đếm ngược 20s cho tài xế
+                startDriverTimer();
+
+                document.getElementById('log').innerHTML += `<li style="color:red; font-weight:bold">HỆ THỐNG: Tài xế ${DRIVER_ID} nhận được lời mời chuyến đi #${currentBookingId}!</li>`;
             });
         });
     }
 
-    // Bước 1: Tài xế bấm Nhận Cuốc -> Trạng thái ACCEPTED
+    function startDriverTimer() {
+        clearInterval(driverTimerInterval);
+        let timeLeft = 20;
+        let timerEl = document.getElementById('driver-timer');
+        timerEl.style.display = "inline";
+        timerEl.innerText = `(⏳ Còn lại: ${timeLeft}s)`;
+
+        driverTimerInterval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft > 0) {
+                timerEl.innerText = `(⏳ Còn lại: ${timeLeft}s)`;
+            } else {
+                clearInterval(driverTimerInterval);
+                timerEl.innerText = `(⏳ Hết giờ!)`;
+            }
+        }, 1000);
+    }
+
     function acceptRide() {
         let token = prompt(`Vui lòng dán Access Token của Tài xế ID ${DRIVER_ID} vào đây:`);
         if (!token) return;
@@ -110,56 +127,51 @@
         );
     }
 
-    // Hàm chung dùng để gọi các API tiến trình chuyến đi
     function updateTripStatus(endpointAction, successMsg, nextActionKey, nextButtonText) {
         let token = prompt(`Dán Access Token của Tài xế ID ${DRIVER_ID} để xác nhận hành động:`);
         if (!token) return;
         let cleanToken = token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
 
-        let nextEndpoint = "";
-        let nextStyle = "background-color: #17a2b8; color: white;";
-
-        if (nextActionKey === 'start') {
-            nextEndpoint = 'start';
-            nextStyle = "background-color: #007bff; color: white;";
-        } else if (nextActionKey === 'complete') {
-            nextEndpoint = 'complete';
-            nextStyle = "background-color: #28a745; color: white;";
-        }
+        let nextEndpoint = nextActionKey === 'start' ? 'start' : 'complete';
+        let nextStyle = nextActionKey === 'start' ? "background-color: #007bff; color: white;" : "background-color: #28a745; color: white;";
 
         callBookingApi(`http://localhost:8080/api/v1/bookings/${currentBookingId}/${endpointAction}`, cleanToken, successMsg,
             `<button onclick="updateTripStatus('${nextEndpoint}', 'Hành trình đang diễn ra...', 'complete', 'HOÀN THÀNH CHUYẾN ĐI')" style="${nextStyle} padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">${nextButtonText}</button>`
         );
     }
 
-    // Helper gọi fetch API
     function callBookingApi(url, token, successMessage, nextButtonHtml) {
         fetch(url, {
             method: 'PUT',
             headers: {'Authorization': 'Bearer ' + token}
         })
-            .then(res => {
-                if (!res.ok) throw new Error("Thao tác thất bại!");
+            .then(async res => {
+                if (!res.ok) {
+                    let errorData = await res.json().catch(() => ({}));
+                    throw new Error(errorData.error || errorData.message || "Thao tác thất bại!");
+                }
                 return res.json();
             })
             .then(data => {
                 alert(successMessage);
+                clearInterval(driverTimerInterval); // Nếu nhận cuốc thành công -> Tắt đồng hồ đếm ngược
+                document.getElementById('driver-timer').style.display = "none";
+
                 document.getElementById('box-title').innerText = `🚀 TRẠNG THÁI: ${data.status}`;
                 document.getElementById('action-buttons').innerHTML = nextButtonHtml;
 
                 if (data.status === 'COMPLETED') {
                     setTimeout(() => {
                         document.getElementById('match-box').style.display = "none";
-                        currentBookingId = null; // Dọn dẹp ID chuyến đi
+                        currentBookingId = null;
                         alert("Chuyến đi đã kết thúc. Bạn đã quay lại trạng thái ONLINE sẵn sàng nhận cuốc mới!");
                     }, 1000);
                 }
 
-                let logEl = document.getElementById('log');
-                logEl.innerHTML += `<li style="color:green; font-weight:bold">HỆ THỐNG: Cập nhật chuyến #${data.bookingId} thành ${data.status}</li>`;
+                document.getElementById('log').innerHTML += `<li style="color:green; font-weight:bold">HỆ THỐNG: Cập nhật chuyến #${data.bookingId} thành ${data.status}</li>`;
             })
             .catch(err => {
-                alert(err.message);
+                alert("❌ THAO TÁC THẤT BẠI: " + err.message);
             });
     }
 
@@ -173,6 +185,7 @@
         document.getElementById('btnConnect').disabled = false;
         document.getElementById('btnDisconnect').disabled = true;
         currentBookingId = null;
+        clearInterval(driverTimerInterval);
     }
 </script>
 </body>

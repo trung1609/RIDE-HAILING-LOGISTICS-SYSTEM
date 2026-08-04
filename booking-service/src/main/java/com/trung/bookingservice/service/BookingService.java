@@ -12,4 +12,5 @@ public interface BookingService {
     BookingResponse acceptBooking(Long driverId, Long bookingId) throws BadRequestException;
     BookingResponse updateBookingStatus(Long driverId, Long bookingId, BookingStatus newStatus) throws ResourceNotFoundException, BadRequestException;
     BookingResponse completeTrip(Long driverId, Long bookingId) throws ResourceNotFoundException, BadRequestException;
+    BookingResponse cancelBooking(Long customerId, Long bookingId) throws ResourceNotFoundException, BadRequestException;
 }
