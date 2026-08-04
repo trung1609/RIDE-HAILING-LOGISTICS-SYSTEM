@@ -7,8 +7,8 @@
         <processorPath useClasspath="false">
           <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok/1.18.46/a5cfe99fdf320e84955ef653f2ce1bf789d11385/lombok-1.18.46.jar" />
         </processorPath>
-        <module name="location-service.main" />
-        <module name="location-service.test" />
+        <module name="booking-service.main" />
+        <module name="booking-service.test" />
       </profile>
     </annotationProcessing>
   </component>
@@ -17,6 +17,9 @@
       <module name="api-gateway" options="-parameters" />
       <module name="api-gateway.main" options="-parameters" />
       <module name="api-gateway.test" options="-parameters" />
+      <module name="booking-service" options="-parameters" />
+      <module name="booking-service.main" options="-parameters" />
+      <module name="booking-service.test" options="-parameters" />
       <module name="discovery-service" options="-parameters" />
       <module name="discovery-service.main" options="-parameters" />
       <module name="discovery-service.test" options="-parameters" />

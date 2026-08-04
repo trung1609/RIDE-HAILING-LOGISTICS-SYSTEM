@@ -41,7 +41,8 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
 
-        if (EXCLUDE_URLS.stream().anyMatch(path::equals) || path.startsWith("/ws-location")) {
+        if (EXCLUDE_URLS.stream().anyMatch(path::equals) || path.startsWith("/ws-location")
+                || path.startsWith("/ws-booking")) {
             return chain.filter(exchange);
         }
 
@@ -76,6 +77,7 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
                             .build();
 
                     ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedRequest).build();
+                    log.info("ROLE: {}", role);
                     return chain.filter(mutatedExchange);
                 });
     }

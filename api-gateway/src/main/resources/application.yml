@@ -22,6 +22,14 @@ spring:
               uri: lb:ws://location-service
               predicates:
                 - Path=/ws-location/**
+            - id: booking-service-route
+              uri: lb://booking-service
+              predicates:
+                - Path=/api/v1/bookings/**
+            - id: booking-websocket-route
+              uri: lb:ws://booking-service
+              predicates:
+                - Path=/ws-booking/**
           globalcors:
             cors-configurations:
               '[/**]':

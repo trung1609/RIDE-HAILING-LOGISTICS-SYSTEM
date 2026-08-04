@@ -3,7 +3,10 @@ package com.trung.locationservice.service.impl;
 import com.trung.locationservice.dto.request.LocationUpdateRequest;
 import com.trung.locationservice.dto.response.DriverLocationResponse;
 import com.trung.locationservice.service.LocationService;
+import com.trung.locationservice.service.client.UserDriverClient;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.geo.*;
 import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -12,15 +15,18 @@ import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class LocationServiceImpl implements LocationService {
 
+    private static final Logger log = LoggerFactory.getLogger(LocationServiceImpl.class);
     private final StringRedisTemplate redisTemplate;
 
     private static final String DRIVER_LOCATION_KEY = "drivers:online:locations";
+    private final UserDriverClient userDriverClient;
 
     @Override
     public void updateDriverLocation(Long driverId, LocationUpdateRequest request) {
@@ -55,15 +61,31 @@ public class LocationServiceImpl implements LocationService {
 
         if (results != null) {
             for (GeoResult<RedisGeoCommands.GeoLocation<String>> result : results) {
-                Point point = result.getContent().getPoint();
-                nearbyDrivers.add(DriverLocationResponse.builder()
-                        .driverId(Long.parseLong(result.getContent().getName()))
-                        .distanceInKm(result.getDistance().getValue())
-                        .longitude(point != null ? point.getX() : null)
-                        .latitude(point != null ? point.getY() : null)
-                        .build());
+                String driverIdStr = result.getContent().getName();
+                Long driverId = Long.parseLong(driverIdStr);
+
+                Boolean isReserved = redisTemplate.hasKey("drivers:reserved:" + driverId);
+                if (Boolean.TRUE.equals(isReserved)) {
+                    log.info("Tài xế {} đang được giữ chỗ cho cuốc xe khác, bỏ qua!", driverId);
+                    continue;
+                }
+                try {
+                    boolean isOnline = userDriverClient.isDriverOnline(driverId);
+                    if (isOnline) {
+                        double distance = result.getDistance().getValue();
+                        nearbyDrivers.add(DriverLocationResponse.builder()
+                                .driverId(driverId)
+                                .latitude(result.getContent().getPoint().getY())
+                                .longitude(result.getContent().getPoint().getX())
+                                .distanceInKm(distance)
+                                .build());
+                    }
+                } catch (Exception e) {
+                    log.error("Không thể kiểm tra trạng thái trực tuyến của tài xế {}: {}", driverId, e.getMessage());
+                }
             }
         }
+        nearbyDrivers.sort(Comparator.comparingDouble(DriverLocationResponse::getDistanceInKm));
         return nearbyDrivers;
     }
 }

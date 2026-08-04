@@ -110,4 +110,11 @@ public class DriverServiceImpl implements DriverService {
         profile.setStatus(newStatus);
         driverProfileRepository.save(profile);
     }
+
+    @Override
+    public boolean isDriverOnline(Long driverId) throws ResourceNotFoundException {
+        DriverProfile profile = driverProfileRepository.findById(driverId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ tài xế."));
+        return profile.getStatus() == DriverStatus.ONLINE;
+    }
 }

@@ -14,4 +14,6 @@ public interface DriverService {
     void toggleDriverActiveStatus(Long driverId, boolean isActive) throws ResourceNotFoundException, BadRequestException;
 
     void updateDriverStatusInternal(Long driverId, boolean isOnline) throws ResourceNotFoundException;
+
+    boolean isDriverOnline(Long driverId) throws ResourceNotFoundException;
 }

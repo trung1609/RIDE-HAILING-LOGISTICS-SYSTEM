@@ -27,15 +27,4 @@ public class LocationController {
         locationService.updateDriverLocation(driverId, request);
         return ResponseEntity.ok("Đã cập nhật vị trí");
     }
-
-    @GetMapping("/drivers/nearby")
-    @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<List<DriverLocationResponse>> getNearbyDrivers(
-            @RequestParam Double longitude,
-            @RequestParam Double latitude,
-            @RequestParam(defaultValue = "5.0") Double radius) {
-
-        List<DriverLocationResponse> drivers = locationService.getNearbyDrivers(longitude, latitude, radius);
-        return ResponseEntity.ok(drivers);
-    }
 }

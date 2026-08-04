@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Khách Hàng Đặt Xe Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+<body style="font-family: Arial, sans-serif; padding: 20px;">
+<h2>Ứng dụng Khách Hàng (Mô phỏng)</h2>
+
+<div style="margin-bottom: 15px;">
+    <label>Access Token của Khách hàng:</label><br>
+    <textarea id="token" rows="3" style="width: 100%;"
+              placeholder="Dán Access Token của CUSTOMER lấy từ Postman login vào đây..."></textarea>
+</div>
+
+<button id="btnConnect" onclick="connectNotification()">1. Kết nối kênh thông báo</button>
+<button id="btnBook" onclick="bookRide()" disabled style="background-color: green; color: white;">2. Bấm Đặt Xe</button>
+
+<div id="status" style="margin-top: 20px; font-weight: bold; color: gray;">Trạng thái: Chưa kết nối</div>
+
+<div id="trip-card"
+     style="margin-top: 20px; padding: 15px; background-color: #e2f0d9; border: 1px solid #c8e1b7; display: none;">
+    <h3 style="color: #385723; margin-top: 0;">🚗 TRẠNG THÁI CHUYẾN ĐI HIỆN TẠI</h3>
+    <p id="trip-status-text" style="font-size: 16px; font-weight: bold; color: #274e13;"></p>
+</div>
+
+<h3>Nhật ký chuyến đi:</h3>
+<ul id="log" style="color: darkcyan;"></ul>
+
+<script>
+    let stompClient = null;
+    let customerId = null;
+
+    function parseJwt(token) {
+        try {
+            let base64Url = token.split('.')[1];
+            let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            let jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function connectNotification() {
+        let rawToken = document.getElementById('token').value.trim();
+        if (!rawToken) {
+            alert("Vui lòng dán token vào!");
+            return;
+        }
+
+        let cleanToken = rawToken.startsWith("Bearer ") ? rawToken.replace("Bearer ", "") : rawToken;
+
+        let decoded = parseJwt(cleanToken);
+        if (decoded && (decoded.userId || decoded.id || decoded.sub)) {
+            customerId = decoded.userId || decoded.id || decoded.sub;
+        } else {
+            customerId = "1";
+        }
+
+        let socket = new SockJS('http://localhost:8080/ws-booking');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({"userId": customerId.toString()}, function (frame) {
+            document.getElementById('status').innerText = `Trạng thái: Đã kết nối hệ thống (Khách hàng ID: ${customerId}). Sẵn sàng đặt xe!`;
+            document.getElementById('btnBook').disabled = false;
+            document.getElementById('btnConnect').disabled = true;
+
+            // Đăng ký nhận thông báo thay đổi trạng thái cuốc xe từ tài xế
+            stompClient.subscribe('/user/queue/booking/status', function (message) {
+                let bookingInfo = JSON.parse(message.body);
+
+                // Hiển thị bảng trạng thái lớn
+                document.getElementById('trip-card').style.display = "block";
+                document.getElementById('trip-status-text').innerText = `Mã chuyến: #${bookingInfo.bookingId} | Trạng thái: ${bookingInfo.status} | Tài xế ID: ${bookingInfo.driverId || 'Đang tìm...'}`;
+
+                let logEl = document.getElementById('log');
+                let color = "orange";
+                if (bookingInfo.status === 'ACCEPTED') color = "blue";
+                else if (bookingInfo.status === 'ARRIVED') color = "purple";
+                else if (bookingInfo.status === 'IN_PROGRESS') color = "darkblue";
+                else if (bookingInfo.status === 'COMPLETED') color = "green";
+
+                logEl.innerHTML += `<li style="font-weight:bold; color:${color}">CẬP NHẬT CHUYẾN ĐI [ID: ${bookingInfo.bookingId}]: Chuyển sang trạng thái ${bookingInfo.status}</li>`;
+            });
+        });
+    }
+
+    function bookRide() {
+        let rawToken = document.getElementById('token').value.trim();
+        let cleanToken = rawToken.startsWith("Bearer ") ? rawToken.replace("Bearer ", "") : rawToken;
+
+        let payload = {
+            "startLongitude": 105.8574,
+            "startLatitude": 21.0245,
+            "endLongitude": 105.8202,
+            "endLatitude": 21.0585
+        };
+
+        fetch('http://localhost:8080/api/v1/bookings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + cleanToken
+            },
+            body: JSON.stringify(payload)
+        })
+            .then(res => {
+                if (!res.ok) throw new Error("Mã lỗi hệ thống: " + res.status);
+                return res.json();
+            })
+            .then(data => {
+                let logEl = document.getElementById('log');
+                let formattedPrice = Math.round(data.price).toLocaleString('vi-VN');
+                logEl.innerHTML += `<li style="color:green">Đã gửi yêu cầu đặt xe thành công! Mã chuyến: #${data.bookingId}. Khoảng cách: ${data.distanceInKm.toFixed(2)} km. Giá: ${formattedPrice} VND. Trạng thái: ${data.status}</li>`;
+            })
+            .catch(err => {
+                let logEl = document.getElementById('log');
+                logEl.innerHTML += `<li style="color:red; font-weight:bold">Yêu cầu thất bại: ${err.message}</li>`;
+                console.error("Lỗi chi tiết:", err);
+            });
+    }
+</script>
+</body>
+</html>

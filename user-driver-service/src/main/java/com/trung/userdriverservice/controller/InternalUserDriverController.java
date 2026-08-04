@@ -45,4 +45,10 @@ public class InternalUserDriverController {
         driverService.updateDriverStatusInternal(driverId, isOnline);
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/drivers/{driverId}/is-online")
+    public ResponseEntity<Boolean> isDriverOnlineInternal(@PathVariable Long driverId) throws ResourceNotFoundException {
+        boolean online = driverService.isDriverOnline(driverId);
+        return ResponseEntity.ok(online);
+    }
 }
