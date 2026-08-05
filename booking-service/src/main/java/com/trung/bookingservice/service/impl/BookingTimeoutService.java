@@ -26,51 +26,39 @@ public class BookingTimeoutService {
     @Transactional
     public void checkTimeoutAndCancel(Long bookingId, Long invitedDriverId) {
         try {
+            log.info("Bắt đầu đếm ngược 20s cho tài xế ID: {} với cuốc xe #{}", invitedDriverId, bookingId);
             Thread.sleep(20000);
 
+            String redisReservedBookingId = redisTemplate.opsForValue().get("drivers:reserved:" + invitedDriverId);
+
+            if (redisReservedBookingId == null || !redisReservedBookingId.equals(bookingId.toString())) {
+                log.info("Phiên đếm ngược cũ của tài xế {} cho cuốc #{} đã hết hiệu lực (Tài xế đã thao tác hoặc cuốc đã chuyển vị trí).", invitedDriverId, bookingId);
+                return;
+            }
+
+            // Đọc trạng thái mới nhất từ Database
             Booking booking = bookingRepository.findById(bookingId).orElse(null);
 
             if (booking != null && booking.getStatus() == BookingStatus.PENDING) {
-                booking.setStatus(BookingStatus.CANCELLED);
-                bookingRepository.save(booking);
+                log.warn("Tài xế ID {} quá 20s không nhận cuốc #{}. Tiến hành giải phóng và kiểm tra luồng.", invitedDriverId, bookingId);
 
-                log.warn("Cuốc xe #{} đã quá thời gian chờ (20s) và tự động bị hủy (CANCELLED).", bookingId);
-
+                // Giải phóng tài xế này trên Redis
                 redisTemplate.delete("drivers:reserved:" + invitedDriverId);
 
-                double distance = LocationUtils.calculateDistance(
-                        booking.getStartLatitude(), booking.getStartLongitude(),
-                        booking.getEndLatitude(), booking.getEndLongitude()
-                );
-
-                BookingResponse cancelResponse = BookingResponse.builder()
+                BookingResponse response = BookingResponse.builder()
                         .bookingId(booking.getId())
-                        .customerId(booking.getCustomerId())
-                        .driverId(invitedDriverId)
-                        .startLongitude(booking.getStartLongitude())
-                        .startLatitude(booking.getStartLatitude())
-                        .endLongitude(booking.getEndLongitude())
-                        .endLatitude(booking.getEndLatitude())
-                        .status(booking.getStatus())
-                        .distanceInKm(distance)
-                        .price(booking.getPrice())
+                        .status(BookingStatus.CANCELLED)
                         .build();
 
-                messagingTemplate.convertAndSendToUser(
-                        booking.getCustomerId().toString(),
-                        "/queue/booking/status",
-                        cancelResponse
-                );
+                // Bắn WebSocket báo cho chính tài xế bị hụt cuốc ẩn hộp thoại đi
+                messagingTemplate.convertAndSendToUser(invitedDriverId.toString(), "/queue/driver/match", response);
 
-                messagingTemplate.convertAndSendToUser(
-                        invitedDriverId.toString(),
-                        "/queue/driver/match",
-                        cancelResponse
-                );
+                log.info("[Timeout-Done] Đã dọn dẹp xong phiên hết hạn của tài xế {}", invitedDriverId);
             }
+
         } catch (InterruptedException e) {
+            log.error("Tiến trình đếm ngược Timeout bị gián đoạn", e);
             Thread.currentThread().interrupt();
-            log.error("Lỗi tiến trình chờ hủy cuốc xe: ", e);
         }
     }
 }

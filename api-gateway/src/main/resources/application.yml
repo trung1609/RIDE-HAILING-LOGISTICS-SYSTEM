@@ -30,6 +30,10 @@ spring:
               uri: lb:ws://booking-service
               predicates:
                 - Path=/ws-booking/**
+            - id: pricing-service-route
+              uri: lb://pricing-service
+              predicates:
+                - Path=/api/v1/pricing/**
           globalcors:
             cors-configurations:
               '[/**]':

@@ -1,5 +1,7 @@
 package com.trung.bookingservice.service.impl;
 
+import com.trung.bookingservice.dto.request.PricingRequest;
+import com.trung.bookingservice.dto.response.PricingResponse;
 import com.trung.bookingservice.exception.BadRequestException;
 import com.trung.bookingservice.exception.ResourceNotFoundException;
 import com.trung.bookingservice.service.BookingService;
@@ -9,6 +11,7 @@ import com.trung.bookingservice.dto.response.BookingResponse;
 import com.trung.bookingservice.dto.response.DriverNearbyResponse;
 import com.trung.bookingservice.entity.Booking;
 import com.trung.bookingservice.repository.BookingRepository;
+import com.trung.bookingservice.service.client.PricingClient;
 import com.trung.bookingservice.service.client.UserDriverClient;
 import com.trung.bookingservice.util.LocationUtils;
 import com.trung.bookingservice.util.enums.BookingStatus;
@@ -20,6 +23,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationAdapter;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -39,6 +44,8 @@ public class BookingServiceImpl implements BookingService {
     private static final double PRICE_PER_KM = 20000.0; // Cấu hình 20k/km
     private final UserDriverClient userDriverClient;
     private final BookingTimeoutService bookingTimeoutService;
+    private final PricingClient pricingClient;
+    private final BookingReassignService bookingReassignService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -67,15 +74,36 @@ public class BookingServiceImpl implements BookingService {
         }
 
         redisTemplate.opsForValue().set(spamKey, "locked", 5, TimeUnit.SECONDS);
-        // 1. Tính toán động khoảng cách chuyến đi và giá tiền
-        double distance = LocationUtils.calculateDistance(
-                request.getStartLatitude(), request.getStartLongitude(),
-                request.getEndLatitude(), request.getEndLongitude()
-        );
-        double rawPrice = distance * PRICE_PER_KM;
-        double calculatedPrice = (double) Math.round(rawPrice);
 
-        // 2. Lưu thông tin thực thể chuyến đi vào DB
+        List<DriverNearbyResponse> nearbyDriversForPricing = locationClient.getNearbyDrivers(
+                request.getStartLongitude(),
+                request.getStartLatitude(),
+                5.0
+        );
+        int supplyCount = nearbyDriversForPricing.size();
+
+        PricingRequest pricingRequest = PricingRequest.builder()
+                .startLongitude(request.getStartLongitude())
+                .startLatitude(request.getStartLatitude())
+                .endLongitude(request.getEndLongitude())
+                .endLatitude(request.getEndLatitude())
+                .build();
+
+        PricingResponse pricingInfo;
+        try {
+            pricingInfo = pricingClient.calculatePrice(pricingRequest, supplyCount);
+        } catch (Exception e) {
+            log.error("Lỗi khi gọi pricing-service, tự động áp dụng giá cơ sở fallback. Chi tiết: {}", e.getMessage());
+            double distanceFallback = LocationUtils.calculateDistance(
+                    request.getStartLatitude(), request.getStartLongitude(),
+                    request.getEndLatitude(), request.getEndLongitude()
+            );
+            pricingInfo = new PricingResponse();
+            pricingInfo.setTotalPrice(Math.round(distanceFallback * 20000.0));
+            pricingInfo.setDistanceInKm(distanceFallback);
+            pricingInfo.setSurgeMultiplier(1.0);
+        }
+
         Booking booking = Booking.builder()
                 .customerId(customerId)
                 .startLongitude(request.getStartLongitude())
@@ -83,13 +111,14 @@ public class BookingServiceImpl implements BookingService {
                 .endLongitude(request.getEndLongitude())
                 .endLatitude(request.getEndLatitude())
                 .status(BookingStatus.PENDING)
-                .price(calculatedPrice)
+                .price(pricingInfo.getTotalPrice())
                 .createdAt(LocalDateTime.now())
                 .build();
         bookingRepository.save(booking);
         bookingRepository.flush();
 
-        log.info("Khách hàng {} đặt xe. Quãng đường: {} km. Thành tiền: {} VND", customerId, String.format("%.2f", distance), calculatedPrice);
+        log.info("Khách hàng {} đặt xe. Quãng đường: {} km. Surge Multiplier: {}x. Thành tiền: {} VND",
+                customerId, String.format("%.2f", pricingInfo.getDistanceInKm()), pricingInfo.getSurgeMultiplier(), pricingInfo.getTotalPrice());
 
         double[] searchRadiuses = {3.0, 5.0, 8.0};
 
@@ -114,7 +143,7 @@ public class BookingServiceImpl implements BookingService {
                     log.info("Đã chiếm khóa thành công tài xế ID {} ở bán kính {} km (cách điểm đón {} km)",
                             driverId, radius, String.format("%.2f", driver.getDistanceInKm()));
 
-                    BookingResponse response = convertToResponse(booking, distance);
+                    BookingResponse response = convertToResponse(booking, pricingInfo.getDistanceInKm());
 
                     // Bắn WebSocket mời nhận cuốc
                     messagingTemplate.convertAndSendToUser(
@@ -139,7 +168,7 @@ public class BookingServiceImpl implements BookingService {
         log.warn("Đã mở rộng đến bán kính tối đa 8km nhưng không có tài xế nào rảnh.");
         booking.setStatus(BookingStatus.CANCELLED);
         bookingRepository.save(booking);
-        return convertToResponse(booking, distance);
+        return convertToResponse(booking, pricingInfo.getDistanceInKm());
     }
 
     @Override
@@ -231,6 +260,78 @@ public class BookingServiceImpl implements BookingService {
                 booking.getCustomerId().toString(),
                 "/queue/booking/status",
                 response
+        );
+
+        return response;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public BookingResponse cancelBookingByDriver(Long driverId, Long bookingId) throws ResourceNotFoundException, BadRequestException {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chuyến đi."));
+
+        if (!driverId.equals(booking.getDriverId())) {
+            throw new BadRequestException("Bạn không có quyền hủy chuyến đi này.");
+        }
+
+        if (booking.getStatus() != BookingStatus.ACCEPTED && booking.getStatus() != BookingStatus.ARRIVED) {
+            throw new BadRequestException("Không thể hủy chuyến đi ở trạng thái hiện tại: " + booking.getStatus());
+        }
+
+        double distance = LocationUtils.calculateDistance(
+                booking.getStartLatitude(), booking.getStartLongitude(),
+                booking.getEndLatitude(), booking.getEndLongitude()
+        );
+        booking.setStatus(BookingStatus.PENDING);
+        booking.setDriverId(null);
+        bookingRepository.save(booking);
+        bookingRepository.flush();
+
+        log.info("Tài xế {} hủy chuyến #{}. Hệ thống đưa trạng thái về PENDING để tìm người thay thế.", driverId, bookingId);
+
+        String rejectedKey = "booking:rejected:" + bookingId;
+        redisTemplate.opsForSet().add(rejectedKey, driverId.toString());
+        redisTemplate.expire(rejectedKey, 30, TimeUnit.MINUTES);
+
+        userDriverClient.updateDriverStatusInternal(driverId, DriverStatus.ONLINE);
+        redisTemplate.delete("drivers:reserved:" + driverId);
+
+        BookingResponse response = convertToResponse(booking, distance);
+
+        BookingResponse driverCancelResponse = BookingResponse.builder()
+                .bookingId(booking.getId())
+                .customerId(booking.getCustomerId())
+                .driverId(driverId)
+                .startLongitude(booking.getStartLongitude())
+                .startLatitude(booking.getStartLatitude())
+                .endLongitude(booking.getEndLongitude())
+                .endLatitude(booking.getEndLatitude())
+                .distanceInKm(distance)
+                .price(booking.getPrice())
+                .status(BookingStatus.CANCELLED)
+                .build();
+
+        // chi bắn WebSocket sau khi transaction commit để tránh trường hợp rollback
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronizationAdapter() {
+                    @Override
+                    public void afterCommit() {
+                        // Bắn WebSocket báo tài xế ẩn hộp thoại
+                        messagingTemplate.convertAndSendToUser(driverId.toString(), "/queue/driver/match", driverCancelResponse);
+
+                        // Bắn WebSocket thông báo trạng thái PENDING mới cho Khách hàng
+                        messagingTemplate.convertAndSendToUser(booking.getCustomerId().toString(), "/queue/booking/status", response);
+
+                        // KÍCH HOẠT TIẾN TRÌNH NGẦM AUTO-REASSIGN TÌM TÀI XẾ KHÁC
+                        bookingReassignService.reassignNewDriverAsync(
+                                booking.getId(),
+                                booking.getStartLongitude(),
+                                booking.getStartLatitude(),
+                                distance
+                        );
+                    }
+                }
         );
 
         return response;

@@ -8,6 +8,7 @@ import com.trung.userdriverservice.exception.BadRequestException;
 import com.trung.userdriverservice.exception.ResourceConflictException;
 import com.trung.userdriverservice.exception.ResourceNotFoundException;
 import com.trung.userdriverservice.service.DriverService;
+import com.trung.userdriverservice.util.enums.DriverStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
