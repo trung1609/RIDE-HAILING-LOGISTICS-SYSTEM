@@ -78,6 +78,19 @@
         .nearby-car-icon {
             transition: transform 2s linear !important;
         }
+
+        /* ⚡ Button MoMo Style */
+        .momo-btn {
+            background-color: #a50064;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            display: none;
+            border-radius: 5px;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
@@ -120,6 +133,9 @@
             style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; display: none; border-radius: 5px;">
         HỦY CHUYẾN ĐI
     </button>
+    <button id="btnPayMomo" class="momo-btn" onclick="payTripMomo()">
+        Thanh toán bằng MoMo
+    </button>
 </div>
 
 <h3>Nhật ký hệ thống:</h3>
@@ -129,11 +145,15 @@
     let stompClient = null;
     let customerId = null;
     let currentBookingId = null;
+    let currentTripPrice = 0;
+    let assignedDriverId = null;
     let activeDriverId = null;
     let customerTimerInterval = null;
     let nearbyDriversInterval = null;
     let map = null;
     let radarMarker = null;
+    let isClientCanceling = false;
+    let hasInitiatedPayment = false;
     let driverMarkers = {};
 
     const startPoint = [21.0245, 105.8574];
@@ -145,6 +165,7 @@
         iconSize: [30, 15], iconAnchor: [15, 7]
     });
 
+    // --- CÁC HÀM LOGIC CŨ GIỮ NGUYÊN HOÀN TOÀN ---
     window.onload = function () {
         map = L.map('map').setView([21.0415, 105.8388], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: '&copy; OpenStreetMap'}).addTo(map);
@@ -159,11 +180,10 @@
         L.polyline([startPoint, endPoint], {color: '#007bff', weight: 4, dashArray: '10, 10'}).addTo(map);
     };
 
-    // ⚡ Hàm đếm ngược thông minh tích hợp cơ chế Tự Hủy Fallback nếu hệ thống treo
     function startCustomerTimer() {
         clearInterval(customerTimerInterval);
         let timeLeft = 20;
-        let fallbackTimeout = 10; // Đợi thêm tối đa 10s để hệ thống ngầm quét mở rộng bán kính 8km
+        let fallbackTimeout = 10;
         let timerEl = document.getElementById('customer-timer');
         timerEl.style.display = "inline";
         timerEl.innerText = `(⏳ Tài xế phản hồi: ${timeLeft}s)`;
@@ -176,10 +196,9 @@
                 fallbackTimeout--;
                 timerEl.innerText = `(🔄 Đang quét tìm tài xế khác... ${fallbackTimeout}s)`;
             } else {
-                // 💥 KỊCH BẢN CHỐT CHẶN: Hết toàn bộ thời gian chờ mà hệ thống vẫn im lặng -> Tự kích hoạt lệnh hủy phía Client
                 clearInterval(customerTimerInterval);
                 logSystem(currentBookingId, "TIMEOUT", "Hệ thống không phản hồi tìm xe. Tự động giải phóng cuốc.");
-                cancelCurrentTrip(true); // Gửi cờ true báo hiệu đây là lệnh tự động hủy do timeout
+                cancelCurrentTrip(true);
             }
         }, 1000);
     }
@@ -208,9 +227,7 @@
                     let idStr = driver.driverId.toString();
                     currentDriverIds.push(idStr);
                     let latlng = [driver.latitude, driver.longitude];
-
                     if (activeDriverId && idStr === activeDriverId.toString()) return;
-
                     if (driverMarkers[idStr]) {
                         driverMarkers[idStr].setLatLng(latlng);
                     } else {
@@ -312,11 +329,12 @@
             stompClient.subscribe('/user/queue/booking/status', function (message) {
                 let bookingInfo = JSON.parse(message.body);
 
-                // ⚡ Đồng bộ khi chuyển đổi tài xế
                 if (bookingInfo.status === 'PENDING') {
                     document.getElementById('btnCancelTrip').style.display = "inline-block";
+                    document.getElementById('btnPayMomo').style.display = "none"; // Ẩn nút thanh toán
+                    hasInitiatedPayment = false;
                     startRadar();
-                    startCustomerTimer(); // Reset bộ đếm 20s cho tài xế mới
+                    startCustomerTimer();
 
                     if (activeDriverId && driverMarkers[activeDriverId.toString()]) {
                         map.removeLayer(driverMarkers[activeDriverId.toString()]);
@@ -329,11 +347,21 @@
                     clearInterval(customerTimerInterval);
                     document.getElementById('customer-timer').style.display = "none";
                     stopRadar();
+
+                    if ((bookingInfo.status === 'ACCEPTED' || bookingInfo.status === 'COMPLETED') && !hasInitiatedPayment) {
+                        document.getElementById('btnPayMomo').style.display = "inline-block";
+                    } else {
+                        document.getElementById('btnPayMomo').style.display = "none";
+                    }
                 }
 
-                // ⚡ Đồng bộ khi cuốc xe bị HỦY HẲN từ Backend
                 if (bookingInfo.status === 'CANCELLED') {
-                    logSystem(bookingInfo.bookingId, "CANCELLED", "Không có tài xế nào tiếp nhận chuyến đi này.");
+                    if (!isClientCanceling) {
+                        logSystem(bookingInfo.bookingId, "CANCELLED", "Hệ thống hủy chuyến đi (Không tìm thấy tài xế).");
+                        alert("❌ THÔNG BÁO: Hệ thống không tìm thấy tài xế rảnh nào tiếp nhận. Cuốc xe đã hủy.");
+                    } else {
+                        logSystem(bookingInfo.bookingId, "CANCELLED", "Bạn đã chủ động hủy chuyến đi.");
+                    }
 
                     if (activeDriverId && driverMarkers[activeDriverId.toString()]) {
                         map.removeLayer(driverMarkers[activeDriverId.toString()]);
@@ -342,10 +370,12 @@
                     activeDriverId = null;
                     currentBookingId = null;
                     document.getElementById('trip-card').style.display = "none";
+                    document.getElementById('btnPayMomo').style.display = "none";
                     stopRadar();
                     document.getElementById('surge-badge').innerText = "Trở về bình thường";
                     document.getElementById('surge-badge').style.color = "blue";
-                    alert("❌ THÔNG BÁO: Hệ thống không tìm thấy tài xế rảnh nào tiếp nhận. Cuốc xe đã hủy.");
+
+                    isClientCanceling = false;
                     return;
                 }
 
@@ -355,6 +385,7 @@
 
                 if (bookingInfo.status === 'ACCEPTED' && bookingInfo.driverId) {
                     activeDriverId = bookingInfo.driverId;
+                    assignedDriverId = bookingInfo.driverId;
                     let idStr = activeDriverId.toString();
                     if (driverMarkers[idStr]) driverMarkers[idStr].setLatLng(startPoint);
                     else driverMarkers[idStr] = L.marker(startPoint, {icon: nearbyCarIcon}).addTo(map).bindPopup(`🚕 Tài xế Mới Đón Bạn (ID: ${idStr})`);
@@ -372,7 +403,7 @@
                 }
 
                 logSystem(bookingInfo.bookingId, bookingInfo.status, "Cập nhật từ hệ thống");
-                if (bookingInfo.status === 'COMPLETED') alert("Tài xế đã hoàn thành chuyến đi!");
+                if (bookingInfo.status === 'COMPLETED') alert("Tài xế đã hoàn thành chuyến đi! Bạn có thể thanh toán qua MoMo.");
             });
         }, function (error) {
             console.error('Lỗi kết nối STOMP: ' + error);
@@ -407,15 +438,19 @@
                     alert("❌ ĐẶT XE THẤT BẠI: Hết xe rảnh!");
                     return;
                 }
+
                 currentBookingId = data.bookingId;
+                currentTripPrice = data.price; // ⚡ Lưu giá tiền để gọi MoMo sau
+
                 updateSurgeBadgeByPrice(data.price);
 
                 document.getElementById('trip-card').style.display = "block";
+                document.getElementById('btnPayMomo').style.display = "none"; // Mới đặt thì chưa cho thanh toán vội
                 document.getElementById('trip-status-text').innerText = `Mã chuyến: #${data.bookingId} | Đang chờ...`;
                 document.getElementById('btnCancelTrip').style.display = "inline-block";
 
                 startRadar();
-                startCustomerTimer(); // Chạy bộ đếm 20s ngay từ đầu
+                startCustomerTimer();
                 logSystem(data.bookingId, "PENDING", `Đã gửi yêu cầu đặt xe. Thành tiền: ${Math.round(data.price).toLocaleString('vi-VN')} VND`);
             })
             .catch(err => alert("⚠️ ĐẶT XE THẤT BẠI: " + err.message));
@@ -427,6 +462,7 @@
 
         let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
         let userId = parseJwt(cleanToken).userId || "1";
+        isClientCanceling = true;
 
         fetch(`http://localhost:8080/api/v1/bookings/${currentBookingId}/cancel`, {
             method: 'PUT',
@@ -438,6 +474,7 @@
             })
             .then(data => {
                 document.getElementById('btnCancelTrip').style.display = "none";
+                document.getElementById('btnPayMomo').style.display = "none";
                 clearInterval(customerTimerInterval);
                 document.getElementById('customer-timer').style.display = "none";
                 stopRadar();
@@ -446,17 +483,64 @@
                 document.getElementById('surge-badge').style.color = "blue";
 
                 if (isAutomaticTimeout) {
-                    alert("❌ HỆ THỐNG TIMEOUT: Không tìm thấy phản hồi từ tài xế phù hợp, cuốc xe tự động hủy để giải phóng!");
+                    alert("❌ HỆ THỐNG TIMEOUT: Không tìm thấy phản hồi từ tài xế, cuốc xe tự động hủy!");
                 } else {
                     alert("Đã hủy chuyến thành công!");
                 }
             }).catch(err => {
+            isAutomaticTimeout = false;
             document.getElementById('btnCancelTrip').style.display = "none";
             clearInterval(customerTimerInterval);
             document.getElementById('customer-timer').style.display = "none";
             stopRadar();
             document.getElementById('trip-card').style.display = "none";
         });
+    }
+
+    function payTripMomo() {
+        if (!currentBookingId || !currentTripPrice || !assignedDriverId) {
+            alert("Thông tin cuốc xe không hợp lệ!");
+            return;
+        }
+
+        let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
+        if (!cleanToken) {
+            alert("Vui lòng kiểm tra lại Token!");
+            return;
+        }
+
+        fetch(`http://localhost:8080/api/v1/payments/customer/pay-trip?bookingId=${currentBookingId}&driverId=${assignedDriverId}&amount=${currentTripPrice}`, {
+            method: 'POST',
+            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': customerId.toString()}
+        })
+            .then(async res => {
+                if (!res.ok) throw new Error("Lỗi khi gọi cổng thanh toán MoMo!");
+                return res.json();
+            })
+            .then(data => {
+                if (data.payUrl) {
+                    window.open(data.payUrl, '_blank'); // Mở tab MoMo
+
+                    hasInitiatedPayment = true;
+
+                    let payBtn = document.getElementById('btnPayMomo');
+                    payBtn.style.display = "none";
+
+                    let tripCard = document.getElementById('trip-card');
+                    let paidBadge = document.createElement("span");
+                    paidBadge.id = "paid-badge";
+                    paidBadge.style.cssText = "color: #2e7d32; font-weight: bold; margin-left: 10px; background: #e8f5e9; padding: 5px 10px; border-radius: 5px;";
+                    paidBadge.innerText = "✅ Đã tạo giao dịch MoMo";
+
+                    if (!document.getElementById('paid-badge')) {
+                        tripCard.appendChild(paidBadge);
+                    }
+
+                    logSystem(currentBookingId, "PAYMENT", "Đang chuyển hướng sang MoMo để thanh toán...");
+                } else {
+                    alert("Không nhận được link thanh toán từ hệ thống!");
+                }
+            }).catch(err => alert("Lỗi: " + err.message));
     }
 </script>
 </body>

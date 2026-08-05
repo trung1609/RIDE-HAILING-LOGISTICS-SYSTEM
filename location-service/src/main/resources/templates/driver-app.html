@@ -30,6 +30,37 @@
             padding: 10px;
             list-style-type: none;
         }
+
+        /* Style cho Ví tài xế */
+        .wallet-panel {
+            background-color: #e2f0d9;
+            border: 1px solid #c8e1b7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .momo-btn {
+            background-color: #a50064;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 5px;
+        }
+
+        .history-btn {
+            background-color: #17a2b8;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 5px;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body style="font-family: Arial, sans-serif; padding: 20px;">
@@ -43,6 +74,20 @@
 </div>
 
 <div id="status" style="margin-top: 20px; font-weight: bold;">Trạng thái: OFFLINE</div>
+
+<div id="wallet-section" class="wallet-panel">
+    <h3 style="color: #385723; margin-top: 0;">💳 VÍ TÀI XẾ</h3>
+    <p style="font-size: 16px; font-weight: bold;">Số dư hiện tại: <span id="wallet-balance"
+                                                                         style="color: #d32f2f; font-size: 20px;">0</span>
+        VND
+        <button onclick="fetchWallet()" style="margin-left:10px; cursor:pointer;">🔄 Làm mới</button>
+    </p>
+    <button class="momo-btn" onclick="depositMoney()">+ Nạp tiền (MoMo)</button>
+    <button class="history-btn" onclick="fetchTransactions()">Xem lịch sử giao dịch</button>
+    <ul id="tx-list"
+        style="margin-top: 15px; font-size: 14px; background: #fff; padding: 10px; border-radius: 5px; max-height: 150px; overflow-y: auto; display: none;"></ul>
+</div>
+
 <div id="map"></div>
 
 <div id="match-box"
@@ -68,6 +113,7 @@
     let carMarker = null;
     let isOnTrip = false;
 
+    // --- CÁC HÀM CŨ GIỮ NGUYÊN ---
     function initMap() {
         if (map) {
             map.remove();
@@ -126,6 +172,10 @@
             .then(async res => {
                 if (!res.ok) throw new Error("Lỗi hệ thống, không thể bật app!");
                 initMap();
+
+                // ⚡ Hiện giao diện ví và load số dư khi bật app thành công
+                document.getElementById('wallet-section').style.display = "block";
+                fetchWallet();
 
                 let locSocket = new SockJS('http://localhost:8080/ws-location');
                 stompLocationClient = Stomp.over(locSocket);
@@ -187,7 +237,7 @@
                 stompBookingClient = Stomp.over(bookSocket);
                 stompBookingClient.connect({"userId": DRIVER_ID}, function () {
                     stompBookingClient.subscribe('/user/queue/driver/match', function (message) {
-                        if (isOnTrip) return; // Bận thì thôi
+                        if (isOnTrip) return;
 
                         let booking = JSON.parse(message.body);
                         if (booking.status === 'CANCELLED') {
@@ -216,6 +266,7 @@
         document.getElementById('btnConnect').disabled = false;
         document.getElementById('btnDisconnect').disabled = true;
         document.getElementById('match-box').style.display = "none";
+        document.getElementById('wallet-section').style.display = "none"; // Ẩn ví
         clearInterval(driverTimerInterval);
         isOnTrip = false;
     }
@@ -243,7 +294,6 @@
             .catch(err => alert("Lỗi khi đồng bộ tắt app: " + err.message));
     }
 
-    // ⚡ Đã bọc lót cơ chế tự động ẨN popup hộp thoại khi đếm ngược về 0s
     function startDriverTimer() {
         clearInterval(driverTimerInterval);
         let timeLeft = 20;
@@ -256,7 +306,6 @@
             if (timeLeft > 0) {
                 timerEl.innerText = `(⏳ Còn: ${timeLeft}s)`;
             } else {
-                // Hết 20 giây phản hồi -> Tự ẩn hộp thoại và reset trạng thái tìm cuốc mới
                 clearInterval(driverTimerInterval);
                 document.getElementById('match-box').style.display = "none";
                 currentBookingId = null;
@@ -337,6 +386,7 @@
 
                 if (actionType === 'complete') {
                     document.getElementById('action-buttons').innerHTML = `<i>Đã hoàn tất!</i>`;
+                    fetchWallet(); // ⚡ Tự động lấy số dư mới sau khi hoàn thành chuyến (bị trừ hoa hồng)
                     setTimeout(() => {
                         document.getElementById('match-box').style.display = "none";
                         currentBookingId = null;
@@ -363,6 +413,92 @@
                 }
             })
             .catch(err => alert("❌ THAO TÁC THẤT BẠI: " + err.message));
+    }
+
+    // ⚡ CÁC HÀM XỬ LÝ PAYMENT (Mới thêm) ⚡
+    function getCleanToken() {
+        let token = document.getElementById('token').value.trim();
+        return token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
+    }
+
+    function fetchWallet() {
+        if (!DRIVER_ID) return;
+        fetch(`http://localhost:8080/api/v1/payments/wallet`, {
+            headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
+        })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('wallet-balance').innerText = data.balance ? data.balance.toLocaleString('vi-VN') : '0';
+            }).catch(err => console.error("Lỗi lấy ví:", err));
+    }
+
+    function depositMoney() {
+        let amountStr = prompt("Nhập số tiền muốn nạp vào ví (VND):", "50000");
+        if (!amountStr) return;
+        let amount = parseFloat(amountStr);
+        if (isNaN(amount) || amount <= 0) {
+            alert("Số tiền không hợp lệ!");
+            return;
+        }
+
+        fetch(`http://localhost:8080/api/v1/payments/driver/deposit?amount=${amount}`, {
+            method: 'POST',
+            headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID}
+        })
+            .then(async res => {
+                if (!res.ok) throw new Error("Lỗi gọi API nạp tiền");
+                return res.json();
+            })
+            .then(data => {
+                if (data.payUrl) {
+                    window.open(data.payUrl, '_blank'); // Mở tab mới sang trang thanh toán MoMo
+                    alert("Đang chuyển hướng sang MoMo. Hãy tải lại trang hoặc bấm 'Làm mới' sau khi nạp xong!");
+                } else {
+                    alert("Không nhận được link thanh toán từ hệ thống!");
+                }
+            }).catch(err => alert("Lỗi hệ thống: " + err.message));
+    }
+
+    function fetchTransactions() {
+        let listEl = document.getElementById('tx-list');
+        if (listEl.style.display === "block") {
+            listEl.style.display = "none";
+            return;
+        } // Toggle
+
+        fetch(`http://localhost:8080/api/v1/payments/transactions`, {
+            headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
+        })
+            .then(res => res.json())
+            .then(data => {
+                listEl.innerHTML = "";
+                if (data.length === 0) {
+                    listEl.innerHTML = "<li>Chưa có giao dịch nào.</li>";
+                }
+                data.forEach(tx => {
+                    let isIncome = (tx.transactionType === 'DEPOSIT' || tx.transactionType === 'TRIP_INCOME');
+                    let color = isIncome ? 'green' : 'red';
+                    let sign = isIncome ? '+' : '-';
+                    let desc = "";
+                    if (tx.transactionType === 'DEPOSIT') {
+                        desc = `💳 Đã nạp tiền vào ví qua MoMo`;
+                    } else if (tx.transactionType === 'TRIP_INCOME') {
+                        desc = `🚕 Khách hàng thanh toán cuốc xe #${tx.bookingId}`;
+                    } else if (tx.transactionType === 'COMMISSION_FEE') {
+                        desc = `📉 Trừ phí hoa hồng hệ thống cuốc xe #${tx.bookingId}`;
+                    } else {
+                        desc = tx.transactionType;
+                    }
+
+                    listEl.innerHTML += `
+                <li style="border-bottom:1px solid #eee; padding:10px 0; line-height: 1.5;">
+                    <div style="font-weight:bold; color: #333;">${desc}</div>
+                    <span style="color:${color}; font-size: 16px; font-weight:bold;">${sign}${tx.amount.toLocaleString('vi-VN')} đ</span>
+                    <i style="color:gray; font-size:12px; margin-left: 5px;">(${tx.status})</i>
+                </li>`;
+                });
+                listEl.style.display = "block";
+            }).catch(err => alert("Lỗi tải lịch sử!"));
     }
 </script>
 </body>

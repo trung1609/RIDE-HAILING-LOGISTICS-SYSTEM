@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: payment-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payment_db
+    username: postgres
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: true
+
+server:
+  port: 8085
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+momo:
+  partner-code: MOMOJH1T20260418_TEST
+  access-key: p35ezPtIupH2eiHu
+  secret-key: UMNByLx4TKWVteSGhwA24bEPnKBVQZWK
+
+  endpoint: https://test-payment.momo.vn/v2/gateway/api/create
+
+  redirect-url: http://localhost:8080/api/v1/payments/momo/return
+
+  ipn-url: https://gluelike-lithographically-willow.ngrok-free.dev/api/v1/payments/momo/ipn
