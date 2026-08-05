@@ -9,6 +9,9 @@ import com.trung.userdriverservice.exception.ResourceConflictException;
 import com.trung.userdriverservice.exception.ResourceNotFoundException;
 import com.trung.userdriverservice.util.enums.DriverStatus;
 
+import java.util.List;
+import java.util.Map;
+
 public interface DriverService {
     ApiResponse<UserResponse> registerDriver(DriverRegisterRequest request) throws ResourceConflictException;
     ApiResponse<UserResponse> updateDriverVehicle(Long driverId, DriverUpdateRequest request) throws ResourceNotFoundException, ResourceConflictException, BadRequestException;
@@ -17,4 +20,6 @@ public interface DriverService {
     void updateDriverStatusInternal(Long driverId, boolean isOnline) throws ResourceNotFoundException;
 
     boolean isDriverOnline(Long driverId) throws ResourceNotFoundException;
+
+    Map<Long, Boolean> getBatchDriversOnlineStatus(List<Long> driverIds);
 }

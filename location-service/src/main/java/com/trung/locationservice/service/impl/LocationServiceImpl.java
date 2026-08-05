@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -59,32 +60,46 @@ public class LocationServiceImpl implements LocationService {
 
         List<DriverLocationResponse> nearbyDrivers = new ArrayList<>();
 
-        if (results != null) {
-            for (GeoResult<RedisGeoCommands.GeoLocation<String>> result : results) {
-                String driverIdStr = result.getContent().getName();
-                Long driverId = Long.parseLong(driverIdStr);
+        if (results == null) return nearbyDrivers;
 
-                Boolean isReserved = redisTemplate.hasKey("drivers:reserved:" + driverId);
-                if (Boolean.TRUE.equals(isReserved)) {
-                    log.info("Tài xế {} đang được giữ chỗ cho cuốc xe khác, bỏ qua!", driverId);
-                    continue;
-                }
-                try {
-                    boolean isOnline = userDriverClient.isDriverOnline(driverId);
-                    if (isOnline) {
-                        double distance = result.getDistance().getValue();
-                        nearbyDrivers.add(DriverLocationResponse.builder()
-                                .driverId(driverId)
-                                .latitude(result.getContent().getPoint().getY())
-                                .longitude(result.getContent().getPoint().getX())
-                                .distanceInKm(distance)
-                                .build());
-                    }
-                } catch (Exception e) {
-                    log.error("Không thể kiểm tra trạng thái trực tuyến của tài xế {}: {}", driverId, e.getMessage());
-                }
+        // Lọc driver chưa bị reserve trước, thu thập ID để batch check
+        List<Long> candidateIds = new ArrayList<>();
+        List<GeoResult<RedisGeoCommands.GeoLocation<String>>> candidateResults = new ArrayList<>();
+
+        for (GeoResult<RedisGeoCommands.GeoLocation<String>> result : results) {
+            Long driverId = Long.parseLong(result.getContent().getName());
+            Boolean isReserved = redisTemplate.hasKey("drivers:reserved:" + driverId);
+            if (Boolean.TRUE.equals(isReserved)) {
+                log.info("Tài xế {} đang được giữ chỗ cho cuốc xe khác, bỏ qua!", driverId);
+                continue;
+            }
+            candidateIds.add(driverId);
+            candidateResults.add(result);
+        }
+
+        if (candidateIds.isEmpty()) return nearbyDrivers;
+
+        // Một lần gọi Feign duy nhất thay vì N lần
+        Map<Long, Boolean> onlineStatusMap;
+        try {
+            onlineStatusMap = userDriverClient.getBatchDriversOnlineStatus(candidateIds);
+        } catch (Exception e) {
+            log.error("Không thể kiểm tra trạng thái trực tuyến hàng loạt tài xế: {}", e.getMessage());
+            return nearbyDrivers;
+        }
+
+        for (GeoResult<RedisGeoCommands.GeoLocation<String>> result : candidateResults) {
+            Long driverId = Long.parseLong(result.getContent().getName());
+            if (Boolean.TRUE.equals(onlineStatusMap.get(driverId))) {
+                nearbyDrivers.add(DriverLocationResponse.builder()
+                        .driverId(driverId)
+                        .latitude(result.getContent().getPoint().getY())
+                        .longitude(result.getContent().getPoint().getX())
+                        .distanceInKm(result.getDistance().getValue())
+                        .build());
             }
         }
+
         nearbyDrivers.sort(Comparator.comparingDouble(DriverLocationResponse::getDistanceInKm));
         return nearbyDrivers;
     }

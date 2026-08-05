@@ -12,6 +12,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/v1/internal")
 @RequiredArgsConstructor
@@ -50,5 +53,10 @@ public class InternalUserDriverController {
     public ResponseEntity<Boolean> isDriverOnlineInternal(@PathVariable Long driverId) throws ResourceNotFoundException {
         boolean online = driverService.isDriverOnline(driverId);
         return ResponseEntity.ok(online);
+    }
+
+    @PostMapping("/drivers/batch/online-status")
+    public ResponseEntity<Map<Long, Boolean>> getBatchDriversOnlineStatus(@RequestBody List<Long> driverIds) {
+        return ResponseEntity.ok(driverService.getBatchDriversOnlineStatus(driverIds));
     }
 }

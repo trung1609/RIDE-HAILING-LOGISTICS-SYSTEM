@@ -5,10 +5,12 @@ import com.trung.bookingservice.dto.response.DriverNearbyResponse;
 import com.trung.bookingservice.entity.Booking;
 import com.trung.bookingservice.repository.BookingRepository;
 import com.trung.bookingservice.service.client.LocationClient;
+import com.trung.bookingservice.service.client.UserDriverClient;
 import com.trung.bookingservice.util.enums.BookingStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ public class BookingReassignService {
     private final SimpMessagingTemplate messagingTemplate;
     private final BookingRepository bookingRepository;
     private final BookingTimeoutService bookingTimeoutService;
+    private final UserDriverClient userDriverClient;
 
     @Async("taskExecutor")
     @Transactional
@@ -40,24 +43,44 @@ public class BookingReassignService {
             Thread.currentThread().interrupt();
         }
 
+        // Kiểm tra trạng thái booking MỘT LẦN trước khi search
+        Booking currentBooking = bookingRepository.findById(bookingId).orElse(null);
+        if (currentBooking == null || currentBooking.getStatus() != BookingStatus.PENDING) {
+            log.info("Cuốc xe #{} không còn ở trạng thái PENDING hoặc đã bị khách hủy, dừng reassign.", bookingId);
+            return;
+        }
+
+        // Gọi location service MỘT LẦN với bán kính lớn nhất
+        List<DriverNearbyResponse> allNearbyDrivers = locationClient.getNearbyDrivers(startLng, startLat, 8.0);
+
         double[] searchRadiuses = {3.0, 5.0, 8.0};
+        String rejectedKey = "booking:rejected:" + bookingId;
 
         for (double radius : searchRadiuses) {
-            Booking currentBooking = bookingRepository.findById(bookingId).orElse(null);
-            if (currentBooking == null || currentBooking.getStatus() != com.trung.bookingservice.util.enums.BookingStatus.PENDING) {
-                log.info("Cuốc xe #{} không còn ở trạng thái PENDING hoặc đã bị khách hủy, dừng reassign.", bookingId);
-                return;
-            }
+            // Filter in-memory theo từng nấc bán kính
+            List<DriverNearbyResponse> nearbyDrivers = allNearbyDrivers.stream()
+                    .filter(d -> d.getDistanceInKm() <= radius)
+                    .toList();
 
-            List<DriverNearbyResponse> nearbyDrivers = locationClient.getNearbyDrivers(startLng, startLat, radius);
-            String rejectedKey = "booking:rejected:" + bookingId;
             for (DriverNearbyResponse driver : nearbyDrivers) {
                 Long driverId = driver.getDriverId();
 
                 Boolean isRejected = redisTemplate.opsForSet().isMember(rejectedKey, driverId.toString());
                 if (Boolean.TRUE.equals(isRejected)) {
                     log.info("Bỏ qua tài xế {} vì đã từng hủy cuốc #{}", driverId, bookingId);
-                    continue; // Nhảy sang ông tài xế tiếp theo (ông B)
+                    continue;
+                }
+
+                try {
+                    ResponseEntity<Boolean> response = userDriverClient.isDriverOnlineInternal(driverId);
+                    boolean isOnline = Boolean.TRUE.equals(response.getBody());
+
+                    if (!isOnline) {
+                        continue;
+                    }
+                } catch (Exception e) {
+                    log.error("Không thể check trạng thái tài xế {}, tạm thời bỏ qua để an toàn.", driverId);
+                    continue;
                 }
 
                 Boolean isLockAcquired = redisTemplate.opsForValue().setIfAbsent(
@@ -71,10 +94,15 @@ public class BookingReassignService {
                     log.info("Auto-Reassign: Đã tìm được tài xế thay thế ID {} ở bán kính {} km cho cuốc #{}",
                             driverId, radius, bookingId);
 
+                    // Lưu reverse key để cancelBooking tra cứu nhanh
+                    redisTemplate.opsForValue().set(
+                            "booking:driver:" + bookingId, driverId.toString(), 20, TimeUnit.SECONDS
+                    );
+
                     BookingResponse response = BookingResponse.builder()
                             .bookingId(currentBooking.getId())
                             .customerId(currentBooking.getCustomerId())
-                            .driverId(null)
+                            .driverId(driverId)
                             .startLongitude(currentBooking.getStartLongitude())
                             .startLatitude(currentBooking.getStartLatitude())
                             .endLongitude(currentBooking.getEndLongitude())

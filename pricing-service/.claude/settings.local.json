@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"E:/Trung/Code/Java/RIDE-HAILING-LOGISTICS-SYSTEM/location-service\" -Recurse -Filter \"*.java\")",
+      "Bash(Select-Object -First 50 FullName)",
+      "Bash(Get-ChildItem -Path \"E:\\\\Trung\\\\Code\\\\Java\\\\RIDE-HAILING-LOGISTICS-SYSTEM\\\\user-driver-service\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)"
+    ]
+  }
+}

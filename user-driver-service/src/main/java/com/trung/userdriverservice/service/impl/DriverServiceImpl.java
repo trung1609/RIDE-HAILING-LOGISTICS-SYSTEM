@@ -20,7 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.Driver;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -118,5 +120,15 @@ public class DriverServiceImpl implements DriverService {
         DriverProfile profile = driverProfileRepository.findById(driverId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hồ sơ tài xế."));
         return profile.getStatus() == DriverStatus.ONLINE;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, Boolean> getBatchDriversOnlineStatus(List<Long> driverIds) {
+        return driverProfileRepository.findAllById(driverIds).stream()
+                .collect(Collectors.toMap(
+                        DriverProfile::getDriverId,
+                        profile -> profile.getStatus() == DriverStatus.ONLINE
+                ));
     }
 }

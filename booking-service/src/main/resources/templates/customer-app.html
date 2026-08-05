@@ -26,7 +26,6 @@
             border-radius: 8px;
         }
 
-        /* Bảng Thống kê Cung/Cầu lơ lửng trên bản đồ */
         .stats-panel {
             position: absolute;
             top: 10px;
@@ -99,7 +98,6 @@
 
 <div class="map-container">
     <div id="map"></div>
-
     <div class="stats-panel" id="stats-panel" style="display: none;">
         <h4>📊 Radar Khu vực</h4>
         <p style="margin: 5px 0; font-weight: bold;">🚕 Cung (Tài xế rảnh): <span id="supply-count"
@@ -118,7 +116,7 @@
         <span id="trip-status-text"></span>
         <span id="customer-timer" style="color: red; margin-left: 10px; display: none;"></span>
     </p>
-    <button id="btnCancelTrip" onclick="cancelCurrentTrip()"
+    <button id="btnCancelTrip" onclick="cancelCurrentTrip(false)"
             style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; display: none; border-radius: 5px;">
         HỦY CHUYẾN ĐI
     </button>
@@ -161,6 +159,31 @@
         L.polyline([startPoint, endPoint], {color: '#007bff', weight: 4, dashArray: '10, 10'}).addTo(map);
     };
 
+    // ⚡ Hàm đếm ngược thông minh tích hợp cơ chế Tự Hủy Fallback nếu hệ thống treo
+    function startCustomerTimer() {
+        clearInterval(customerTimerInterval);
+        let timeLeft = 20;
+        let fallbackTimeout = 10; // Đợi thêm tối đa 10s để hệ thống ngầm quét mở rộng bán kính 8km
+        let timerEl = document.getElementById('customer-timer');
+        timerEl.style.display = "inline";
+        timerEl.innerText = `(⏳ Tài xế phản hồi: ${timeLeft}s)`;
+
+        customerTimerInterval = setInterval(() => {
+            if (timeLeft > 0) {
+                timeLeft--;
+                timerEl.innerText = `(⏳ Tài xế phản hồi: ${timeLeft}s)`;
+            } else if (fallbackTimeout > 0) {
+                fallbackTimeout--;
+                timerEl.innerText = `(🔄 Đang quét tìm tài xế khác... ${fallbackTimeout}s)`;
+            } else {
+                // 💥 KỊCH BẢN CHỐT CHẶN: Hết toàn bộ thời gian chờ mà hệ thống vẫn im lặng -> Tự kích hoạt lệnh hủy phía Client
+                clearInterval(customerTimerInterval);
+                logSystem(currentBookingId, "TIMEOUT", "Hệ thống không phản hồi tìm xe. Tự động giải phóng cuốc.");
+                cancelCurrentTrip(true); // Gửi cờ true báo hiệu đây là lệnh tự động hủy do timeout
+            }
+        }, 1000);
+    }
+
     function loadNearbyDrivers() {
         let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
         if (!cleanToken) return;
@@ -168,6 +191,11 @@
 
         fetch(url, {method: 'GET', headers: {'Authorization': 'Bearer ' + cleanToken}})
             .then(async res => {
+                if (res.status === 401) {
+                    cleanupSystem();
+                    alert("Phiên làm việc đã hết hạn. Vui lòng cập nhật token mới!");
+                    throw new Error("Unauthorized");
+                }
                 if (!res.ok) throw new Error("HTTP Status: " + res.status);
                 let responseText = await res.text();
                 return responseText ? JSON.parse(responseText) : [];
@@ -197,7 +225,6 @@
                         delete driverMarkers[id];
                     }
                 }
-
                 document.getElementById('supply-count').innerText = Object.keys(driverMarkers).length;
             })
             .catch(err => console.warn("Lỗi quét tài xế:", err.message));
@@ -221,7 +248,6 @@
         }
     }
 
-    // Tiện ích tự động giải mã cấu hình hiển thị Surge dựa trên giá tiền thực tế nhận được
     function updateSurgeBadgeByPrice(price) {
         let badge = document.getElementById('surge-badge');
         if (price > 120000) {
@@ -244,6 +270,23 @@
         }
     }
 
+    function cleanupSystem() {
+        clearInterval(nearbyDriversInterval);
+        clearInterval(customerTimerInterval);
+        if (stompClient) stompClient.disconnect();
+        document.getElementById('status').innerText = "Trạng thái: TOKEN HẾT HẠN";
+        document.getElementById('status').style.color = "red";
+        document.getElementById('btnBook').disabled = true;
+        document.getElementById('btnConnect').disabled = false;
+    }
+
+    function logSystem(bookingId, status, messageStr) {
+        let logEl = document.getElementById('log');
+        let color = status === 'COMPLETED' ? "green" : (status === 'CANCELLED' || status === 'TIMEOUT' ? "red" : "blue");
+        logEl.innerHTML += `<li style="font-weight:bold; color:${color}">[ID: ${bookingId || '?'}] -> ${status}: ${messageStr}</li>`;
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
     function connectNotification() {
         let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
         if (!cleanToken) {
@@ -256,8 +299,6 @@
         stompClient = Stomp.over(socket);
 
         stompClient.connect({"userId": customerId.toString()}, function (frame) {
-            console.log('Kết nối WebSocket thành công: ' + frame);
-
             document.getElementById('status').innerText = `Đã kết nối (ID: ${customerId})`;
             document.getElementById('status').style.color = "green";
             document.getElementById('btnBook').disabled = false;
@@ -271,19 +312,17 @@
             stompClient.subscribe('/user/queue/booking/status', function (message) {
                 let bookingInfo = JSON.parse(message.body);
 
-                // Khi tài xế hủy cuốc và hệ thống tự động đưa về PENDING
+                // ⚡ Đồng bộ khi chuyển đổi tài xế
                 if (bookingInfo.status === 'PENDING') {
                     document.getElementById('btnCancelTrip').style.display = "inline-block";
                     startRadar();
+                    startCustomerTimer(); // Reset bộ đếm 20s cho tài xế mới
 
-                    // Xóa marker tài xế cũ vừa hủy chuyến ra khỏi Map
                     if (activeDriverId && driverMarkers[activeDriverId.toString()]) {
                         map.removeLayer(driverMarkers[activeDriverId.toString()]);
                         delete driverMarkers[activeDriverId.toString()];
                     }
                     activeDriverId = null;
-
-                    // Giữ nguyên nhãn thông tin giá động (Surge), không làm nhiễu thông tin
                     if (bookingInfo.price) updateSurgeBadgeByPrice(bookingInfo.price);
                 } else {
                     document.getElementById('btnCancelTrip').style.display = "none";
@@ -292,9 +331,10 @@
                     stopRadar();
                 }
 
-                // Khi có lỗi hệ thống hoặc bị từ chối/hủy hẳn do quét hết 8km không có ai nhận
-                if (bookingInfo.status === 'CANCELLED' && currentBookingId === bookingInfo.bookingId) {
-                    alert("❌ CHUYẾN ĐI BỊ HỦY: Hiện không có tài xế nào tiếp nhận chuyến đi này.");
+                // ⚡ Đồng bộ khi cuốc xe bị HỦY HẲN từ Backend
+                if (bookingInfo.status === 'CANCELLED') {
+                    logSystem(bookingInfo.bookingId, "CANCELLED", "Không có tài xế nào tiếp nhận chuyến đi này.");
+
                     if (activeDriverId && driverMarkers[activeDriverId.toString()]) {
                         map.removeLayer(driverMarkers[activeDriverId.toString()]);
                         delete driverMarkers[activeDriverId.toString()];
@@ -303,17 +343,15 @@
                     currentBookingId = null;
                     document.getElementById('trip-card').style.display = "none";
                     stopRadar();
-
                     document.getElementById('surge-badge').innerText = "Trở về bình thường";
                     document.getElementById('surge-badge').style.color = "blue";
+                    alert("❌ THÔNG BÁO: Hệ thống không tìm thấy tài xế rảnh nào tiếp nhận. Cuốc xe đã hủy.");
                     return;
                 }
 
                 currentBookingId = bookingInfo.bookingId;
                 document.getElementById('trip-card').style.display = "block";
-
-                // Cập nhật trạng thái chu trình di chuyển vào ĐÚNG khu vực của nó
-                document.getElementById('trip-status-text').innerText = `Mã chuyến: #${bookingInfo.bookingId} | Trạng thái: ${bookingInfo.status} | Tài xế ID: ${bookingInfo.driverId || 'Đang tìm tài xế thay thế...'}`;
+                document.getElementById('trip-status-text').innerText = `Mã chuyến: #${bookingInfo.bookingId} | Trạng thái: ${bookingInfo.status} | Tài xế ID: ${bookingInfo.driverId || 'Đang tìm tài xế...'}`;
 
                 if (bookingInfo.status === 'ACCEPTED' && bookingInfo.driverId) {
                     activeDriverId = bookingInfo.driverId;
@@ -333,16 +371,12 @@
                     document.getElementById('surge-badge').style.color = "blue";
                 }
 
-                let logEl = document.getElementById('log');
-                let color = bookingInfo.status === 'COMPLETED' ? "green" : (bookingInfo.status === 'CANCELLED' ? "red" : "blue");
+                logSystem(bookingInfo.bookingId, bookingInfo.status, "Cập nhật từ hệ thống");
                 if (bookingInfo.status === 'COMPLETED') alert("Tài xế đã hoàn thành chuyến đi!");
-                logEl.innerHTML += `<li style="font-weight:bold; color:${color}">[ID: ${bookingInfo.bookingId}] -> ${bookingInfo.status}</li>`;
-                logEl.scrollTop = logEl.scrollHeight;
             });
-
         }, function (error) {
             console.error('Lỗi kết nối STOMP: ' + error);
-            document.getElementById('status').innerText = "Trạng thái: KẾT NỐI THẤT BẠI (Vui lòng kiểm tra Gateway/Backend)";
+            document.getElementById('status').innerText = "Trạng thái: KẾT NỐI THẤT BẠI";
             document.getElementById('status').style.color = "red";
         });
     }
@@ -374,24 +408,23 @@
                     return;
                 }
                 currentBookingId = data.bookingId;
-
-                // Cập nhật mức giá động chuẩn xác ngay khi đặt cuốc thành công
                 updateSurgeBadgeByPrice(data.price);
 
                 document.getElementById('trip-card').style.display = "block";
                 document.getElementById('trip-status-text').innerText = `Mã chuyến: #${data.bookingId} | Đang chờ...`;
                 document.getElementById('btnCancelTrip').style.display = "inline-block";
-                startRadar();
 
-                let logEl = document.getElementById('log');
-                logEl.innerHTML += `<li style="color:green">Đã đặt xe! Giá cuối (đã tính Surge): ${Math.round(data.price).toLocaleString('vi-VN')} VND.</li>`;
-                logEl.scrollTop = logEl.scrollHeight;
+                startRadar();
+                startCustomerTimer(); // Chạy bộ đếm 20s ngay từ đầu
+                logSystem(data.bookingId, "PENDING", `Đã gửi yêu cầu đặt xe. Thành tiền: ${Math.round(data.price).toLocaleString('vi-VN')} VND`);
             })
             .catch(err => alert("⚠️ ĐẶT XE THẤT BẠI: " + err.message));
     }
 
-    function cancelCurrentTrip() {
-        if (!currentBookingId || !confirm("Bạn có chắc chắn muốn hủy?")) return;
+    function cancelCurrentTrip(isAutomaticTimeout = false) {
+        if (!currentBookingId) return;
+        if (!isAutomaticTimeout && !confirm("Bạn có chắc chắn muốn hủy?")) return;
+
         let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
         let userId = parseJwt(cleanToken).userId || "1";
 
@@ -404,18 +437,25 @@
                 return res.json();
             })
             .then(data => {
-                alert("Đã hủy chuyến!");
                 document.getElementById('btnCancelTrip').style.display = "none";
                 clearInterval(customerTimerInterval);
                 document.getElementById('customer-timer').style.display = "none";
                 stopRadar();
+                document.getElementById('trip-card').style.display = "none";
                 document.getElementById('surge-badge').innerText = "Trở về bình thường";
                 document.getElementById('surge-badge').style.color = "blue";
+
+                if (isAutomaticTimeout) {
+                    alert("❌ HỆ THỐNG TIMEOUT: Không tìm thấy phản hồi từ tài xế phù hợp, cuốc xe tự động hủy để giải phóng!");
+                } else {
+                    alert("Đã hủy chuyến thành công!");
+                }
             }).catch(err => {
-            if (err.message.includes("CANCELLED")) {
-                document.getElementById('btnCancelTrip').style.display = "none";
-                stopRadar();
-            } else alert("⚠️ LỖI: " + err.message);
+            document.getElementById('btnCancelTrip').style.display = "none";
+            clearInterval(customerTimerInterval);
+            document.getElementById('customer-timer').style.display = "none";
+            stopRadar();
+            document.getElementById('trip-card').style.display = "none";
         });
     }
 </script>

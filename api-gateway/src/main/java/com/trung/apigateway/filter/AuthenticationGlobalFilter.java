@@ -47,7 +47,6 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         }
 
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        log.info("Authorization Header: {}", authHeader);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return onError(exchange, "Thiếu hoặc sai định dạng Authorization Header.", HttpStatus.UNAUTHORIZED);
         }
@@ -77,7 +76,6 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
                             .build();
 
                     ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedRequest).build();
-                    log.info("ROLE: {}", role);
                     return chain.filter(mutatedExchange);
                 });
     }

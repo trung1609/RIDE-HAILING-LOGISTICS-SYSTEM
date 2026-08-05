@@ -19,6 +19,7 @@ import com.trung.bookingservice.util.enums.DriverStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -75,12 +76,17 @@ public class BookingServiceImpl implements BookingService {
 
         redisTemplate.opsForValue().set(spamKey, "locked", 5, TimeUnit.SECONDS);
 
-        List<DriverNearbyResponse> nearbyDriversForPricing = locationClient.getNearbyDrivers(
+        // Gọi location service MỘT LẦN với bán kính lớn nhất
+        List<DriverNearbyResponse> allNearbyDrivers = locationClient.getNearbyDrivers(
                 request.getStartLongitude(),
                 request.getStartLatitude(),
-                5.0
+                8.0
         );
-        int supplyCount = nearbyDriversForPricing.size();
+
+        // Đếm tài xế trong bán kính 5km cho pricing (filter in-memory)
+        int supplyCount = (int) allNearbyDrivers.stream()
+                .filter(d -> d.getDistanceInKm() <= 5.0)
+                .count();
 
         PricingRequest pricingRequest = PricingRequest.builder()
                 .startLongitude(request.getStartLongitude())
@@ -123,14 +129,25 @@ public class BookingServiceImpl implements BookingService {
         double[] searchRadiuses = {3.0, 5.0, 8.0};
 
         for (double radius : searchRadiuses) {
-            List<DriverNearbyResponse> nearbyDrivers = locationClient.getNearbyDrivers(
-                    request.getStartLongitude(),
-                    request.getStartLatitude(),
-                    radius
-            );
+            // Filter in-memory theo từng nấc bán kính, không gọi thêm Feign
+            List<DriverNearbyResponse> nearbyDrivers = allNearbyDrivers.stream()
+                    .filter(d -> d.getDistanceInKm() <= radius)
+                    .toList();
 
             for (DriverNearbyResponse driver : nearbyDrivers) {
                 Long driverId = driver.getDriverId();
+
+                try {
+                    ResponseEntity<Boolean> response = userDriverClient.isDriverOnlineInternal(driverId);
+                    boolean isOnline = Boolean.TRUE.equals(response.getBody());
+
+                    if (!isOnline) {
+                        continue;
+                    }
+                } catch (Exception e) {
+                    log.error("Không thể check trạng thái tài xế {}, tạm thời bỏ qua để an toàn.", driverId);
+                    continue;
+                }
 
                 Boolean isLockAcquired = redisTemplate.opsForValue().setIfAbsent(
                         "drivers:reserved:" + driverId,
@@ -142,6 +159,11 @@ public class BookingServiceImpl implements BookingService {
                 if (Boolean.TRUE.equals(isLockAcquired)) {
                     log.info("Đã chiếm khóa thành công tài xế ID {} ở bán kính {} km (cách điểm đón {} km)",
                             driverId, radius, String.format("%.2f", driver.getDistanceInKm()));
+
+                    // Lưu reverse key để cancelBooking tra cứu nhanh thay vì gọi location service
+                    redisTemplate.opsForValue().set(
+                            "booking:driver:" + booking.getId(), driverId.toString(), 20, TimeUnit.SECONDS
+                    );
 
                     BookingResponse response = convertToResponse(booking, pricingInfo.getDistanceInKm());
 
@@ -190,12 +212,12 @@ public class BookingServiceImpl implements BookingService {
 
         log.info("Khách hàng {} đã chủ động hủy chuyến đi #{}", customerId, bookingId);
 
-        List<DriverNearbyResponse> nearbyDrivers = locationClient.getNearbyDrivers(
-                booking.getStartLongitude(), booking.getStartLatitude(), 3.0
-        );
-        if (!nearbyDrivers.isEmpty()) {
-            Long invitedDriverId = nearbyDrivers.get(0).getDriverId();
+        // Tra cứu driver đang được giữ chỗ qua Redis reverse key, không gọi Feign
+        String reservedDriverIdStr = redisTemplate.opsForValue().get("booking:driver:" + bookingId);
+        if (reservedDriverIdStr != null) {
+            Long invitedDriverId = Long.parseLong(reservedDriverIdStr);
             redisTemplate.delete("drivers:reserved:" + invitedDriverId);
+            redisTemplate.delete("booking:driver:" + bookingId);
 
             // Bắn WebSocket báo cho tài xế ẩn hộp thoại
             BookingResponse cancelResponse = convertToResponse(booking, 0.0);

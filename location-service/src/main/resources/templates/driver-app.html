@@ -7,7 +7,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -35,6 +34,9 @@
 </head>
 <body style="font-family: Arial, sans-serif; padding: 20px;">
 <h2>App Tài Xế (Mô phỏng Bản đồ & Nhận cuốc)</h2>
+<div style="margin-bottom: 15px;">
+    <textarea id="token" rows="2" style="width: 100%;" placeholder="Dán Access Token của TÀI XẾ vào đây..."></textarea>
+</div>
 <div style="margin-bottom: 15px;">
     <button id="btnConnect" onclick="connect()">Bật App (Đi làm)</button>
     <button id="btnDisconnect" onclick="disconnect()" disabled>Tắt App (Nghỉ ngơi)</button>
@@ -67,6 +69,9 @@
     let isOnTrip = false;
 
     function initMap() {
+        if (map) {
+            map.remove();
+        }
         const initLat = 21.0245;
         const initLng = 105.8574;
         map = L.map('map').setView([initLat, initLng], 13);
@@ -103,105 +108,107 @@
         if (!driverIdPrompt) return;
         DRIVER_ID = driverIdPrompt.trim();
 
-        // ⚡ BẢO VỆ CHẶT CHẼ: Dọn dẹp sạch sẽ mọi vòng lặp cũ phòng trường hợp nhấn đúp
+        let token = document.getElementById('token').value.trim();
+        if (!token) {
+            alert("Vui lòng dán Token vào trước!");
+            return;
+        }
+        let cleanToken = token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
+
         if (locationInterval) clearInterval(locationInterval);
         if (stompLocationClient) stompLocationClient.disconnect();
         if (stompBookingClient) stompBookingClient.disconnect();
 
-        initMap();
+        fetch(`http://localhost:8080/api/v1/drivers/${DRIVER_ID}/status?isActive=true`, {
+            method: 'PUT',
+            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID}
+        })
+            .then(async res => {
+                if (!res.ok) throw new Error("Lỗi hệ thống, không thể bật app!");
+                initMap();
 
-        let locSocket = new SockJS('http://localhost:8080/ws-location');
-        stompLocationClient = Stomp.over(locSocket);
+                let locSocket = new SockJS('http://localhost:8080/ws-location');
+                stompLocationClient = Stomp.over(locSocket);
 
-        // Kích hoạt kết nối định vị
-        stompLocationClient.connect({"driverId": DRIVER_ID}, function () {
+                stompLocationClient.connect({"driverId": DRIVER_ID}, function () {
+                    document.getElementById('status').innerText = `Trạng thái: ONLINE (Đang hoạt động - ID: ${DRIVER_ID})`;
+                    document.getElementById('status').style.color = "green";
+                    document.getElementById('btnConnect').disabled = true;
+                    document.getElementById('btnDisconnect').disabled = false;
 
-            // Chỉ khi nhận được cái gật đầu CONNECTED từ Server, UI mới đổi trạng thái
-            document.getElementById('status').innerText = `Trạng thái: ONLINE (Đang hoạt động - ID: ${DRIVER_ID})`;
-            document.getElementById('status').style.color = "green";
-            document.getElementById('btnConnect').disabled = true;
-            document.getElementById('btnDisconnect').disabled = false;
+                    const routeWaypoints = [
+                        {lat: 21.0230, lng: 105.7600, desc: "A. ~10km"}, {lat: 21.0240, lng: 105.7800, desc: "B. ~8km"},
+                        {lat: 21.0245, lng: 105.8000, desc: "C. ~6km"}, {lat: 21.0245, lng: 105.8200, desc: "D. ~4km"},
+                        {lat: 21.0245, lng: 105.8350, desc: "E. ~2.5km (Vào vùng đón)"}, {
+                            lat: 21.0245,
+                            lng: 105.8550,
+                            desc: "F. ~0.2km (Sát khách)"
+                        }
+                    ];
+                    let currentWaypointIndex = 0;
+                    let previousPoint = null;
 
-            const routeWaypoints = [
-                {lat: 21.0230, lng: 105.7600, desc: "A. ~10km"},
-                {lat: 21.0240, lng: 105.7800, desc: "B. ~8km"},
-                {lat: 21.0245, lng: 105.8000, desc: "C. ~6km"},
-                {lat: 21.0245, lng: 105.8200, desc: "D. ~4km"},
-                {lat: 21.0245, lng: 105.8350, desc: "E. ~2.5km (Vào vùng đón)"},
-                {lat: 21.0245, lng: 105.8550, desc: "F. ~0.2km (Sát khách)"}
-            ];
-            let currentWaypointIndex = 0;
-            let previousPoint = null;
+                    locationInterval = setInterval(() => {
+                        if (isOnTrip) return;
+                        let point = routeWaypoints[currentWaypointIndex];
+                        carMarker.setLatLng([point.lat, point.lng]);
+                        map.panTo([point.lat, point.lng]);
 
-            // Bắt đầu vòng lặp gửi toạ độ GPS
-            locationInterval = setInterval(() => {
-                if (isOnTrip) return; // Nếu đang chở khách thì không chạy lượn lờ
+                        if (previousPoint) {
+                            let bearing = calculateBearing(previousPoint.lat, previousPoint.lng, point.lat, point.lng);
+                            let taxiEl = document.getElementById('taxi-container');
+                            if (taxiEl) taxiEl.style.transform = `rotate(${bearing}deg)`;
+                        }
+                        previousPoint = point;
 
-                let point = routeWaypoints[currentWaypointIndex];
-                carMarker.setLatLng([point.lat, point.lng]);
-                map.panTo([point.lat, point.lng]);
+                        if (stompLocationClient && stompLocationClient.connected) {
+                            stompLocationClient.send("/app/driver/location", {"driverId": DRIVER_ID}, JSON.stringify({
+                                "longitude": point.lng,
+                                "latitude": point.lat
+                            }));
+                            let logEl = document.getElementById('log');
+                            logEl.innerHTML += `<li>🚗 [GPS Sent] Tài xế ${DRIVER_ID}: Đến điểm ${point.desc}</li>`;
+                            logEl.scrollTop = logEl.scrollHeight;
+                        } else {
+                            handleSystemOffline();
+                        }
 
-                if (previousPoint) {
-                    let bearing = calculateBearing(previousPoint.lat, previousPoint.lng, point.lat, point.lng);
-                    let taxiEl = document.getElementById('taxi-container');
-                    if (taxiEl) taxiEl.style.transform = `rotate(${bearing}deg)`;
-                }
-                previousPoint = point;
-
-                // Kiểm tra xem kết nối STOMP có thực sự còn sống không trước khi gửi
-                if (stompLocationClient && stompLocationClient.connected) {
-                    stompLocationClient.send("/app/driver/location", {"driverId": DRIVER_ID}, JSON.stringify({
-                        "longitude": point.lng,
-                        "latitude": point.lat
-                    }));
-
-                    let logEl = document.getElementById('log');
-                    logEl.innerHTML += `<li>🚗 [GPS Sent] Tài xế ${DRIVER_ID}: Đến điểm ${point.desc}</li>`;
-                    logEl.scrollTop = logEl.scrollHeight;
-                } else {
-                    // ⚡ BẮT BỆNH LẬP TỨC: Nếu phát hiện mất kết nối ngầm, dừng ngay luồng gửi GPS
-                    logEl.innerHTML += `<li style="color:red; font-weight:bold;">⚠️ Mất kết nối đến Server, dừng cập nhật vị trí!</li>`;
+                        currentWaypointIndex++;
+                        if (currentWaypointIndex >= routeWaypoints.length) {
+                            currentWaypointIndex = 0;
+                            previousPoint = null;
+                        }
+                    }, 5000);
+                }, function (error) {
                     handleSystemOffline();
-                }
+                });
 
-                currentWaypointIndex++;
-                if (currentWaypointIndex >= routeWaypoints.length) {
-                    currentWaypointIndex = 0;
-                    previousPoint = null;
-                }
-            }, 5000);
-        }, function (error) {
-            // Callback xử lý lỗi mạng kết nối từ Server
-            console.error("Lỗi kết nối WebSocket định vị:", error);
-            handleSystemOffline();
-        });
+                let bookSocket = new SockJS('http://localhost:8080/ws-booking');
+                stompBookingClient = Stomp.over(bookSocket);
+                stompBookingClient.connect({"userId": DRIVER_ID}, function () {
+                    stompBookingClient.subscribe('/user/queue/driver/match', function (message) {
+                        if (isOnTrip) return; // Bận thì thôi
 
-        // Kích hoạt kết nối nhận cuốc
-        let bookSocket = new SockJS('http://localhost:8080/ws-booking');
-        stompBookingClient = Stomp.over(bookSocket);
-        stompBookingClient.connect({"userId": DRIVER_ID}, function () {
-            stompBookingClient.subscribe('/user/queue/driver/match', function (message) {
-                let booking = JSON.parse(message.body);
-                if (booking.status === 'CANCELLED') {
-                    document.getElementById('match-box').style.display = "none";
-                    clearInterval(driverTimerInterval);
-                    currentBookingId = null;
-                    isOnTrip = false;
-                    let logEl = document.getElementById('log');
-                    logEl.innerHTML += `<li style="color:red; font-weight:bold;">🔄 Chuyến đi đã bị hủy bỏ. Trở lại trạng thái tìm cuốc...</li>`;
-                    return;
-                }
-                currentBookingId = booking.bookingId;
-                document.getElementById('box-title').innerText = "🔔 CÓ CUỐC XE MỚI!";
-                document.getElementById('match-info').innerHTML = `Khách ID: ${booking.customerId}<br>Thu nhập: <b>${Math.round(booking.price).toLocaleString('vi-VN')} VND</b>`;
-                document.getElementById('action-buttons').innerHTML = `<button onclick="acceptRide()" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">NHẬN CUỐC</button>`;
-                document.getElementById('match-box').style.display = "block";
-                startDriverTimer();
-            });
-        });
+                        let booking = JSON.parse(message.body);
+                        if (booking.status === 'CANCELLED') {
+                            document.getElementById('match-box').style.display = "none";
+                            clearInterval(driverTimerInterval);
+                            currentBookingId = null;
+                            isOnTrip = false;
+                            document.getElementById('log').innerHTML += `<li style="color:red; font-weight:bold;">🔄 Chuyến đi đã bị hủy bỏ/chuyển người.</li>`;
+                            return;
+                        }
+                        currentBookingId = booking.bookingId;
+                        document.getElementById('box-title').innerText = "🔔 CÓ CUỐC XE MỚI!";
+                        document.getElementById('match-info').innerHTML = `Khách ID: ${booking.customerId}<br>Thu nhập: <b>${Math.round(booking.price).toLocaleString('vi-VN')} VND</b>`;
+                        document.getElementById('action-buttons').innerHTML = `<button onclick="acceptRide()" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">NHẬN CUỐC</button>`;
+                        document.getElementById('match-box').style.display = "block";
+                        startDriverTimer();
+                    });
+                });
+            }).catch(err => alert(err.message));
     }
 
-    // Hàm phụ trợ đưa UI về OFFLINE khi mất mạng đột ngột hoặc ngắt chủ động
     function handleSystemOffline() {
         if (locationInterval) clearInterval(locationInterval);
         document.getElementById('status').innerText = "Trạng thái: OFFLINE (Đã tắt app)";
@@ -214,16 +221,16 @@
     }
 
     function disconnect() {
-        let token = prompt(`Vui lòng nhập Access Token tài xế để xác nhận Tắt App (Nghỉ ngơi):`);
+        let token = document.getElementById('token').value.trim();
         if (!token) return;
         let cleanToken = token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
 
-        // ⚡ ĐỒNG BỘ CHẶT CHẼ XUỐNG DB: Gọi API báo tôi muốn nghỉ ngơi
-        fetch(`http://localhost:8080/api/v1/drivers/status`, {
+        fetch(`http://localhost:8080/api/v1/drivers/${DRIVER_ID}/status?isActive=false`, {
             method: 'PUT',
-            headers: {'Authorization': 'Bearer ' + cleanToken}
+            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID}
         })
-            .then(() => {
+            .then(async res => {
+                if (!res.ok) throw new Error("Lỗi khi tắt app!");
                 if (stompLocationClient) stompLocationClient.disconnect();
                 if (stompBookingClient) stompBookingClient.disconnect();
                 if (map) {
@@ -236,24 +243,37 @@
             .catch(err => alert("Lỗi khi đồng bộ tắt app: " + err.message));
     }
 
+    // ⚡ Đã bọc lót cơ chế tự động ẨN popup hộp thoại khi đếm ngược về 0s
     function startDriverTimer() {
         clearInterval(driverTimerInterval);
         let timeLeft = 20;
         let timerEl = document.getElementById('driver-timer');
         timerEl.style.display = "inline";
         timerEl.innerText = `(⏳ Còn: ${timeLeft}s)`;
+
         driverTimerInterval = setInterval(() => {
             timeLeft--;
-            if (timeLeft > 0) timerEl.innerText = `(⏳ Còn: ${timeLeft}s)`; else clearInterval(driverTimerInterval);
+            if (timeLeft > 0) {
+                timerEl.innerText = `(⏳ Còn: ${timeLeft}s)`;
+            } else {
+                // Hết 20 giây phản hồi -> Tự ẩn hộp thoại và reset trạng thái tìm cuốc mới
+                clearInterval(driverTimerInterval);
+                document.getElementById('match-box').style.display = "none";
+                currentBookingId = null;
+                isOnTrip = false;
+
+                let logEl = document.getElementById('log');
+                logEl.innerHTML += `<li style="color:orange;">⏳ Đã hết thời gian phản hồi. Hệ thống tự động bỏ qua cuốc xe.</li>`;
+                logEl.scrollTop = logEl.scrollHeight;
+            }
         }, 1000);
     }
 
     function acceptRide() {
-        let token = prompt(`Vui lòng dán Access Token của Tài xế vào đây:`);
+        let token = document.getElementById('token').value.trim();
         if (!token) return;
         let cleanToken = token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
 
-        // Bổ sung thêm Nút hủy màu đỏ ngay cạnh nút Đã đến điểm đón
         let nextButtons = `
             <button onclick="updateTripStatus('arrived', 'Đã đến điểm đón!', 'start')" style="background-color: #ffc107; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">ĐÃ ĐẾN ĐIỂM ĐÓN</button>
             <button onclick="driverCancelRide('${cleanToken}')" style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">HỦY CUỐC XE</button>
@@ -262,29 +282,24 @@
     }
 
     function updateTripStatus(endpointAction, successMsg, nextActionKey) {
-        let token = prompt(`Dán Access Token của Tài xế ID ${DRIVER_ID} để xác nhận:`);
+        let token = document.getElementById('token').value.trim();
         if (!token) return;
         let cleanToken = token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
 
         let nextBtn = "";
         if (nextActionKey === 'start') {
-            // Khi đã đến điểm đón, vẫn cho phép tài xế hủy chuyến nếu đợi quá lâu không thấy khách
             nextBtn = `
                 <button onclick="updateTripStatus('start', 'Hành trình đang diễn ra...', 'complete')" style="background-color: #007bff; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">BẮT ĐẦU HÀNH TRÌNH</button>
                 <button onclick="driverCancelRide('${cleanToken}')" style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">HỦY CUỐC XE</button>
             `;
         } else if (nextActionKey === 'complete') {
-            // Đang di chuyển (IN_PROGRESS) thì không cho phép tài xế bấm nút hủy nữa
             nextBtn = `<button onclick="updateTripStatus('complete', 'Chuyến đi kết thúc!', '')" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">HOÀN THÀNH CHUYẾN ĐI</button>`;
         }
-
         callBookingApi(`http://localhost:8080/api/v1/bookings/${currentBookingId}/${endpointAction}`, cleanToken, successMsg, nextBtn, endpointAction);
     }
 
-    // 📣 HÀM XỬ LÝ GỌI LỆNH HỦY CHUYẾN TỪ PHÍA TÀI XẾ
     function driverCancelRide(token) {
-        if (!confirm("Bạn có chắc chắn muốn hủy bỏ cuốc xe này không? Hủy nhiều sẽ bị phạt đấy!")) return;
-
+        if (!confirm("Bạn có chắc chắn muốn hủy bỏ cuốc xe này không?")) return;
         fetch(`http://localhost:8080/api/v1/bookings/${currentBookingId}/driver-cancel`, {
             method: 'PUT',
             headers: {'Authorization': 'Bearer ' + token}
@@ -297,7 +312,7 @@
                 return res.json();
             })
             .then(data => {
-                alert("Đã hủy chuyến đi thành công! Giao diện sẽ tự động làm mới.");
+                alert("Đã hủy chuyến đi thành công!");
                 document.getElementById('match-box').style.display = "none";
                 currentBookingId = null;
                 isOnTrip = false;
