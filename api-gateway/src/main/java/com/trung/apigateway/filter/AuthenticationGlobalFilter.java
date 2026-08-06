@@ -42,7 +42,10 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         String path = request.getURI().getPath();
 
         if (EXCLUDE_URLS.stream().anyMatch(path::equals) || path.startsWith("/ws-location")
-                || path.startsWith("/ws-booking") || path.contains("/api/v1/payments/momo/ipn") || path.contains("/api/v1/payments/momo/return")) {
+                || path.startsWith("/ws-booking") || path.contains("/api/v1/payments/momo/ipn")
+                || path.contains("/api/v1/payments/momo/return")
+                || path.contains("/api/v1/payments/vnpay/return")
+                || path.contains("/cancel-pending")) {
             return chain.filter(exchange);
         }
 

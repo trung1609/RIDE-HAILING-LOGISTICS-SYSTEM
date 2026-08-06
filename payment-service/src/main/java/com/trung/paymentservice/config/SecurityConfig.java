@@ -24,7 +24,10 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/payments/momo/ipn", "/api/v1/payments/momo/return").permitAll()
+                        .requestMatchers("/api/v1/payments/momo/ipn",
+                                "/api/v1/payments/momo/return",
+                                "/api/v1/payments/vnpay/return",
+                                "/api/v1/payments/booking/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

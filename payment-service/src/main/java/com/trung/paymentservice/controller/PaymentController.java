@@ -1,13 +1,18 @@
 package com.trung.paymentservice.controller;
 
 import com.trung.paymentservice.dto.request.MomoIpnRequest;
-import com.trung.paymentservice.dto.response.MomoCreateResponse;
+import com.trung.paymentservice.dto.response.PaymentUrlResponse;
 import com.trung.paymentservice.dto.response.WalletResponse;
 import com.trung.paymentservice.entity.Transaction;
 import com.trung.paymentservice.mapper.PaymentMapper;
 import com.trung.paymentservice.repository.TransactionRepository;
 import com.trung.paymentservice.service.WalletService;
 import com.trung.paymentservice.service.impl.MomoService;
+import com.trung.paymentservice.service.impl.VnpayService;
+import com.trung.paymentservice.strategy.PaymentFactory;
+import com.trung.paymentservice.strategy.PaymentStrategy;
+import com.trung.paymentservice.util.enums.TransactionStatus;
+import com.trung.paymentservice.util.enums.TransactionType;
 import com.trung.paymentservice.util.enums.UserType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,37 +31,41 @@ public class PaymentController {
     private final WalletService walletService;
     private final PaymentMapper paymentMapper;
     private final MomoService momoService;
+    private final VnpayService vnpayService;
     private final TransactionRepository transactionRepository;
+    private final PaymentFactory paymentFactory;
 
     @GetMapping("/wallet")
     public ResponseEntity<WalletResponse> getMyWallet(
             @RequestHeader("X-User-Id") Long userId,
             @RequestHeader("X-User-Role") String roleStr) {
-
         UserType userType = UserType.valueOf(roleStr.toUpperCase());
-        WalletResponse response = paymentMapper.toWalletResponse(walletService.getOrCreateWallet(userId, userType));
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(paymentMapper.toWalletResponse(walletService.getOrCreateWallet(userId, userType)));
     }
 
-    @PostMapping("/driver/deposit")
-    public ResponseEntity<MomoCreateResponse> depositWallet(
-            @RequestHeader("X-User-Id") Long driverId,
-            @RequestParam BigDecimal amount) {
-
-        log.info("Tài xế ID {} gửi yêu cầu nạp {} VND vào ví qua MoMo", driverId, amount);
-        MomoCreateResponse response = momoService.createDriverDepositRequest(driverId, amount);
-        return ResponseEntity.ok(response);
+    @GetMapping("/booking/{bookingId}/payment-status")
+    public ResponseEntity<String> checkPaymentStatus(@PathVariable Long bookingId) {
+        boolean isSuccess = transactionRepository.findByBookingId(bookingId)
+                .stream()
+                .anyMatch(tx -> tx.getTransactionType() == TransactionType.TRIP_PAYMENT
+                        && tx.getStatus() == TransactionStatus.SUCCESS);
+        return ResponseEntity.ok(isSuccess ? "SUCCESS" : "PENDING");
     }
 
-    @PostMapping("/customer/pay-trip")
-    public ResponseEntity<MomoCreateResponse> payTripByMomo(
-            @RequestHeader("X-User-Id") Long customerId,
-            @RequestParam Long bookingId,
-            @RequestParam Long driverId,
+    @PostMapping("/payment/create")
+    public ResponseEntity<PaymentUrlResponse> createUniversalPayment(
+            @RequestHeader("X-User-Id") Long userId,
+            @RequestParam String method,
+            @RequestParam String type,
+            @RequestParam(required = false) Long bookingId,
+            @RequestParam(required = false) Long driverId,
             @RequestParam BigDecimal amount) {
 
-        log.info("Khách hàng {} yêu cầu thanh toán MoMo cho chuyến đi #{}, Tài xế hưởng: {}, Số tiền: {}", customerId, bookingId, driverId, amount);
-        MomoCreateResponse response = momoService.createTripPaymentRequest(customerId, driverId, bookingId, amount);
+        log.info("Khởi tạo thanh toán. Cổng: {}, Luồng: {}, Số tiền: {}", method, type, amount);
+
+        PaymentStrategy strategy = paymentFactory.getStrategy(method);
+        PaymentUrlResponse response = strategy.createPayment(userId, driverId, bookingId, amount, type);
+
         return ResponseEntity.ok(response);
     }
 
@@ -64,10 +73,17 @@ public class PaymentController {
     public ResponseEntity<List<Transaction>> getTransactions(
             @RequestHeader("X-User-Id") Long userId,
             @RequestHeader("X-User-Role") String roleStr) {
-
         UserType userType = UserType.valueOf(roleStr.toUpperCase());
         var wallet = walletService.getOrCreateWallet(userId, userType);
         return ResponseEntity.ok(transactionRepository.findByWalletIdOrderByCreatedAtDesc(wallet.getId()));
+    }
+
+    @PostMapping("/driver/withdraw")
+    public ResponseEntity<Void> withdrawWallet(
+            @RequestHeader("X-User-Id") Long driverId,
+            @RequestParam BigDecimal amount) {
+        walletService.withdrawWallet(driverId, amount);
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/momo/ipn")
@@ -82,59 +98,39 @@ public class PaymentController {
             @RequestParam("resultCode") Integer resultCode,
             @RequestParam(value = "message", defaultValue = "") String message,
             @RequestParam(value = "extraData", defaultValue = "") String extraData) {
-
         momoService.processMomoReturn(orderId, resultCode, extraData);
+        return renderReturnHtml(resultCode == 0 ? "00" : "FAIL", orderId, message);
+    }
 
-        String title, icon, color, subText;
-        if (resultCode == 0) {
-            title = "Thanh Toán Thành Công!";
-            icon = "✅";
-            color = "#2e7d32";
-            subText = "Giao dịch của bạn đã được hệ thống xác nhận thành công.";
-        } else if (resultCode == 1006) {
-            title = "Đã Hủy Giao Dịch";
-            icon = "🛑";
-            color = "#ed6c02";
-            subText = "Bạn đã chủ động hủy quá trình thanh toán trên MoMo.";
-        } else {
-            title = "Thanh Toán Thất Bại";
-            icon = "❌";
-            color = "#d32f2f";
-            subText = "Lỗi: " + message;
-        }
+    @GetMapping("/vnpay/return")
+    public ResponseEntity<String> handleVnpayReturn(
+            @RequestParam("vnp_TxnRef") String orderId,
+            @RequestParam("vnp_ResponseCode") String responseCode,
+            @RequestParam("vnp_OrderInfo") String orderInfo) {
+
+        vnpayService.processVnpayReturn(orderId, responseCode, orderInfo);
+        return renderReturnHtml(responseCode, orderId, "Giao dịch kết thúc");
+    }
+
+    @PutMapping("/booking/{bookingId}/cancel-pending")
+    public ResponseEntity<Void> cancelPendingPayments(@PathVariable Long bookingId) {
+        log.info("Yêu cầu hủy các giao dịch PENDING của cuốc xe #{}", bookingId);
+        walletService.cancelPendingTransactionsByBookingId(bookingId);
+        return ResponseEntity.ok().build();
+    }
+
+    private ResponseEntity<String> renderReturnHtml(String code, String orderId, String subText) {
+        String title = "00".equals(code) ? "Thanh Toán Thành Công!" : "Thanh Toán Thất Bại";
+        String icon = "00".equals(code) ? "✅" : "❌";
+        String color = "00".equals(code) ? "#2e7d32" : "#d32f2f";
 
         String html = """
-                <!DOCTYPE html>
-                <html lang="vi">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Kết Quả Thanh Toán MoMo</title>
-                    <style>
-                        body { font-family: 'Segoe UI', Roboto, sans-serif; background-color: #f4f6f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-                        .card { background: #ffffff; padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); text-align: center; max-width: 400px; width: 90%%; }
-                        .icon { font-size: 64px; margin-bottom: 10px; }
-                        h2 { color: %s; margin-bottom: 12px; font-size: 24px; }
-                        p { color: #555; font-size: 15px; line-height: 1.5; margin-bottom: 25px; }
-                        .order-id { background: #f8f9fa; border: 1px dashed #ccc; padding: 8px 12px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #333; margin-bottom: 20px; }
-                        .btn { display: inline-block; background-color: #ae2070; color: white; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: bold; font-size: 15px; transition: background 0.2s; }
-                        .btn:hover { background-color: #8c1958; }
-                    </style>
-                </head>
-                <body>
-                    <div class="card">
-                        <div class="icon">%s</div>
-                        <h2>%s</h2>
-                        <div class="order-id">Mã đơn: %s</div>
-                        <p>%s</p>
-                        <a href="javascript:window.close()" class="btn">Đóng Cửa Sổ</a>
-                    </div>
-                </body>
-                </html>
+                <!DOCTYPE html><html><head><meta charset='UTF-8'><title>Kết Quả</title>
+                <style>body{font-family:'Segoe UI';background:#f4f6f9;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}
+                .card{background:#fff;padding:40px;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,0.08);text-align:center;max-width:400px;width:90%%;}
+                h2{color:%s;}.btn{display:inline-block;background:#ae2070;color:#white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;}</style></head>
+                <body><div class='card'><h2>%s %s</h2><p>Mã đơn: %s</p><p>%s</p><a href='javascript:window.close()' class='btn' style='color:white;'>Đóng Cửa Sổ</a></div></body></html>
                 """.formatted(color, icon, title, orderId, subText);
-
-        return ResponseEntity.ok()
-                .header("Content-Type", "text/html; charset=UTF-8")
-                .body(html);
+        return ResponseEntity.ok().header("Content-Type", "text/html; charset=UTF-8").body(html);
     }
 }

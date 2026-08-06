@@ -23,7 +23,10 @@ public class GatewayAuthenticationFilter extends OncePerRequestFilter {
         String userId = request.getHeader("X-User-Id");
         String role = request.getHeader("X-User-Role");
 
-        if (request.getRequestURI().contains("/api/v1/payments/momo/ipn") || request.getRequestURI().contains("/api/v1/payments/momo/return")) {
+        if (request.getRequestURI().contains("/api/v1/payments/momo/ipn")
+                || request.getRequestURI().contains("/api/v1/payments/momo/return")
+                || request.getRequestURI().contains("/api/v1/payments/vnpay/return")
+                || request.getRequestURI().contains("/cancel-pending")) {
             filterChain.doFilter(request, response);
             return;
         }

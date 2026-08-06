@@ -36,3 +36,9 @@ momo:
   redirect-url: http://localhost:8080/api/v1/payments/momo/return
 
   ipn-url: https://gluelike-lithographically-willow.ngrok-free.dev/api/v1/payments/momo/ipn
+
+vnpay:
+  tmn-code: RMMQDEPO
+  hash-secret: LRMCGOZFQCNDBTTQWYCYEOQYORMQJPCU
+  endpoint: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+  return-url: http://localhost:8080/api/v1/payments/vnpay/return
