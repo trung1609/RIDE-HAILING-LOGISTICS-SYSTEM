@@ -1,55 +1,5 @@
 spring:
   application:
     name: payment-service
-  datasource:
-    url: jdbc:postgresql://localhost:5432/payment_db
-    username: postgres
-    password: 123456
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-    show-sql: true
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: payment-service
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
-      properties:
-        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
-        spring.json.trusted.packages: "*"
-        spring.json.type.mapping: booking-event:com.trung.paymentservice.event.BookingCompletedEvent
-
-server:
-  port: 8085
-eureka:
-  instance:
-    prefer-ip-address: true
-  client:
-    register-with-eureka: true
-    fetch-registry: true
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-
-momo:
-  partner-code: MOMOJH1T20260418_TEST
-  access-key: p35ezPtIupH2eiHu
-  secret-key: UMNByLx4TKWVteSGhwA24bEPnKBVQZWK
-
-  endpoint: https://test-payment.momo.vn/v2/gateway/api/create
-
-  redirect-url: http://localhost:8080/api/v1/payments/momo/return
-
-  ipn-url: https://gluelike-lithographically-willow.ngrok-free.dev/api/v1/payments/momo/ipn
-
-vnpay:
-  tmn-code: RMMQDEPO
-  hash-secret: LRMCGOZFQCNDBTTQWYCYEOQYORMQJPCU
-  endpoint: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
-  return-url: http://localhost:8080/api/v1/payments/vnpay/return
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}

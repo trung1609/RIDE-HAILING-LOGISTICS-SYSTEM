@@ -6,3 +6,7 @@ build/
 # IntelliJ IDEA
 .idea/
 *.iml
+
+# Environment files
+.env
+.env.*

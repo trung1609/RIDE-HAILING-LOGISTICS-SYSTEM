@@ -1,37 +1,5 @@
 spring:
   application:
     name: user-driver-service
-  datasource:
-    url: jdbc:postgresql://localhost:5432/ride_hailing_db
-    username: postgres
-    password: 123456
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-    hibernate:
-      ddl-auto: update
-
-  data:
-    redis:
-      host: localhost
-      port: 6379
-server:
-  port: 8081
-
-eureka:
-  client:
-    fetch-registry: true
-    register-with-eureka: true
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    prefer-ip-address: true
-
-jwt:
-  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-  access-token-expiration: 86400000
-  refresh-token-expiration: 604800000
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}

@@ -104,6 +104,13 @@
 <ul id="log"></ul>
 
 <script>
+    const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    const protocol = isLocal ? 'http' : 'https';
+
+    const API_BASE_URL = isLocal ? 'http://localhost:8080' : `${protocol}://${window.location.hostname}`;
+    const WS_BASE_URL = isLocal ? 'http://localhost:8080' : `${protocol}://${window.location.hostname}`;
+
     let stompLocationClient = null;
     let stompBookingClient = null;
     let locationInterval = null;
@@ -165,7 +172,7 @@
 
         document.getElementById('wallet-section').style.display = "block";
 
-        fetch(`http://localhost:8080/api/v1/payments/wallet`, {
+        fetch(`${API_BASE_URL}/api/v1/payments/wallet`, {
             headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
         })
             .then(res => res.json())
@@ -189,7 +196,7 @@
         if (stompLocationClient) stompLocationClient.disconnect();
         if (stompBookingClient) stompBookingClient.disconnect();
 
-        fetch(`http://localhost:8080/api/v1/drivers/${DRIVER_ID}/status?isActive=true`, {
+        fetch(`${API_BASE_URL}/api/v1/drivers/${DRIVER_ID}/status?isActive=true`, {
             method: 'PUT',
             headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID}
         })
@@ -197,7 +204,7 @@
                 if (!res.ok) throw new Error("Lỗi hệ thống, không thể bật app!");
                 initMap();
 
-                let locSocket = new SockJS('http://localhost:8080/ws-location');
+                let locSocket = new SockJS('${WS_BASE_URL}/ws-location');
                 stompLocationClient = Stomp.over(locSocket);
 
                 stompLocationClient.connect({"driverId": DRIVER_ID}, function () {
@@ -253,7 +260,7 @@
                     handleSystemOffline();
                 });
 
-                let bookSocket = new SockJS('http://localhost:8080/ws-booking');
+                let bookSocket = new SockJS('${WS_BASE_URL}/ws-booking');
                 stompBookingClient = Stomp.over(bookSocket);
                 stompBookingClient.connect({"userId": DRIVER_ID}, function () {
                     stompBookingClient.subscribe('/user/queue/driver/match', function (message) {
@@ -298,7 +305,7 @@
         if (!token) return;
         let cleanToken = token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
 
-        fetch(`http://localhost:8080/api/v1/drivers/${DRIVER_ID}/status?isActive=false`, {
+        fetch(`${API_BASE_URL}/api/v1/drivers/${DRIVER_ID}/status?isActive=false`, {
             method: 'PUT',
             headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID}
         })
@@ -349,7 +356,7 @@
             <button onclick="updateTripStatus('arrived', 'Đã đến điểm đón!', 'start')" style="background-color: #ffc107; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">ĐÃ ĐẾN ĐIỂM ĐÓN</button>
             <button onclick="driverCancelRide('${cleanToken}')" style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">HỦY CUỐC XE</button>
         `;
-        callBookingApi(`http://localhost:8080/api/v1/bookings/${currentBookingId}/accept`, cleanToken, "Đã nhận cuốc!", nextButtons, 'accept');
+        callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/accept`, cleanToken, "Đã nhận cuốc!", nextButtons, 'accept');
     }
 
     function updateTripStatus(endpointAction, successMsg, nextActionKey) {
@@ -366,12 +373,12 @@
         } else if (nextActionKey === 'complete') {
             nextBtn = `<button onclick="updateTripStatus('complete', 'Chuyến đi kết thúc!', '')" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">HOÀN THÀNH CHUYẾN ĐI</button>`;
         }
-        callBookingApi(`http://localhost:8080/api/v1/bookings/${currentBookingId}/${endpointAction}`, cleanToken, successMsg, nextBtn, endpointAction);
+        callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/${endpointAction}`, cleanToken, successMsg, nextBtn, endpointAction);
     }
 
     function driverCancelRide(token) {
         if (!confirm("Bạn có chắc chắn muốn hủy bỏ cuốc xe này không?")) return;
-        fetch(`http://localhost:8080/api/v1/bookings/${currentBookingId}/driver-cancel`, {
+        fetch(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/driver-cancel`, {
             method: 'PUT',
             headers: {'Authorization': 'Bearer ' + token}
         })
@@ -444,7 +451,7 @@
 
     function fetchWalletWithCallback(callback) {
         if (!DRIVER_ID) return;
-        fetch(`http://localhost:8080/api/v1/payments/wallet`, {
+        fetch(`${API_BASE_URL}/api/v1/payments/wallet`, {
             headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
         })
             .then(res => res.json())
@@ -474,7 +481,7 @@
             return;
         }
 
-        fetch(`http://localhost:8080/api/v1/payments/payment/create?method=${method.toUpperCase()}&type=DEPOSIT&amount=${amount}`, {
+        fetch(`${API_BASE_URL}/api/v1/payments/payment/create?method=${method.toUpperCase()}&type=DEPOSIT&amount=${amount}`, {
             method: 'POST',
             headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID}
         })
@@ -512,7 +519,7 @@
             return;
         }
 
-        fetch(`http://localhost:8080/api/v1/payments/transactions`, {
+        fetch(`${API_BASE_URL}/api/v1/payments/transactions`, {
             headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
         })
             .then(res => res.json())
@@ -558,7 +565,7 @@
             return;
         }
 
-        fetch(`http://localhost:8080/api/v1/payments/driver/withdraw?amount=${amount}`, {
+        fetch(`${API_BASE_URL}/api/v1/payments/driver/withdraw?amount=${amount}`, {
             method: 'POST',
             headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID}
         })

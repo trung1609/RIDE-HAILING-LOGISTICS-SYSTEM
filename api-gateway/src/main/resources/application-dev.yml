@@ -1,0 +1,81 @@
+server:
+  port: ${API_GATEWAY_PORT:8080}
+
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: user-driver-route
+              uri: lb://user-driver-service
+              predicates:
+                - Path=/api/v1/auth/**, /api/v1/users/**, /api/v1/drivers/**
+            - id: location-service-route
+              uri: lb://location-service
+              predicates:
+                - Path=/api/v1/locations/**
+            - id: location-websocket-route
+              uri: lb:ws://location-service
+              predicates:
+                - Path=/ws-location/**
+            - id: booking-service-route
+              uri: lb://booking-service
+              predicates:
+                - Path=/api/v1/bookings/**
+            - id: booking-websocket-route
+              uri: lb:ws://booking-service
+              predicates:
+                - Path=/ws-booking/**
+            - id: pricing-service-route
+              uri: lb://pricing-service
+              predicates:
+                - Path=/api/v1/pricing/**
+            - id: payment-service-route
+              uri: lb://payment-service
+              predicates:
+                - Path=/api/v1/payments/**
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedMethods:
+                  - GET
+                  - POST
+                  - PUT
+                  - DELETE
+                  - OPTIONS
+                allowedHeaders: "*"
+                allowCredentials: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+jwt:
+  secret: ${JWT_SECRET}
+
+logging:
+  level:
+    root: INFO
+    com.trung: DEBUG
+
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+    org.springframework: INFO
+    org.apache.kafka: INFO
+

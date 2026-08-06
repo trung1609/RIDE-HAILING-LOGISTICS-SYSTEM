@@ -1,0 +1,74 @@
+server:
+  port: ${PAYMENT_SERVICE_PORT:8085}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/${PAYMENT_DATABASE}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      group-id: payment-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: "*"
+        spring.json.type.mapping: booking-event:com.trung.paymentservice.event.BookingCompletedEvent
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE}
+
+momo:
+  partner-code: ${MOMO_PARTNER_CODE_PROD}
+  access-key: ${MOMO_ACCESS_KEY_PROD}
+  secret-key: ${MOMO_SECRET_KEY_PROD}
+  endpoint: ${MOMO_ENDPOINT_PROD}
+  redirect-url: ${MOMO_REDIRECT_URL_PROD}
+  ipn-url: ${MOMO_IPN_URL_PROD}
+
+vnpay:
+  tmn-code: ${VNPAY_TMN_CODE}
+  hash-secret: ${VNPAY_HASH_SECRET}
+  endpoint: ${VNPAY_ENDPOINT}
+  return-url: ${VNPAY_RETURN_URL}
+
+logging:
+  level:
+    root: INFO
+    com.trung: INFO
+
+    org.springframework: WARN
+    org.hibernate: WARN
+    org.apache.kafka: WARN
+    com.netflix.eureka: WARN
+
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
