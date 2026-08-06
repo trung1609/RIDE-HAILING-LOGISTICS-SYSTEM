@@ -82,7 +82,7 @@
         VND
         <button onclick="fetchWallet()" style="margin-left:10px; cursor:pointer;">🔄 Làm mới</button>
     </p>
-    <button class="momo-btn" onclick="depositMoney()">+ Nạp tiền (MoMo)</button>
+    <button class="momo-btn" onclick="depositMoney()">+ Nạp tiền</button>
     <button class="history-btn" onclick="withdrawMoney()" style="background-color: #007bff;">- Rút tiền</button>
     <button class="history-btn" onclick="fetchTransactions()">Xem lịch sử giao dịch</button>
     <ul id="tx-list"
@@ -110,6 +110,7 @@
     let currentBookingId = null;
     let DRIVER_ID = null;
     let driverTimerInterval = null;
+    let depositCheckInterval = null;
     let map = null;
     let carMarker = null;
     let isOnTrip = false;
@@ -162,6 +163,28 @@
         }
         let cleanToken = token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
 
+        document.getElementById('wallet-section').style.display = "block";
+
+        fetch(`http://localhost:8080/api/v1/payments/wallet`, {
+            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
+        })
+            .then(res => res.json())
+            .then(data => {
+                let balance = data.balance || 0;
+                document.getElementById('wallet-balance').innerText = balance.toLocaleString('vi-VN');
+
+                if (balance <= -50000) {
+                    alert(`🚨 TÀI KHOẢN BỊ KHÓA NHẬN CUỐC!\nSố dư ví hiện tại: ${balance.toLocaleString('vi-VN')} VND.\n\nBạn đã vượt quá hạn mức nợ cước cho phép (-50.000 VND). Vui lòng sử dụng tính năng "Nạp tiền" ngay bên dưới để xóa nợ và tiếp tục hoạt động!`);
+                    return;
+                }
+
+                proceedToOnline(cleanToken);
+            })
+            .catch(err => alert("Lỗi khi kiểm tra trạng thái ví: " + err.message));
+    }
+
+    // Tách riêng logic bật app
+    function proceedToOnline(cleanToken) {
         if (locationInterval) clearInterval(locationInterval);
         if (stompLocationClient) stompLocationClient.disconnect();
         if (stompBookingClient) stompBookingClient.disconnect();
@@ -173,10 +196,6 @@
             .then(async res => {
                 if (!res.ok) throw new Error("Lỗi hệ thống, không thể bật app!");
                 initMap();
-
-                // ⚡ Hiện giao diện ví và load số dư khi bật app thành công
-                document.getElementById('wallet-section').style.display = "block";
-                fetchWallet();
 
                 let locSocket = new SockJS('http://localhost:8080/ws-location');
                 stompLocationClient = Stomp.over(locSocket);
@@ -268,8 +287,9 @@
         document.getElementById('btnConnect').disabled = false;
         document.getElementById('btnDisconnect').disabled = true;
         document.getElementById('match-box').style.display = "none";
-        document.getElementById('wallet-section').style.display = "none"; // Ẩn ví
+
         clearInterval(driverTimerInterval);
+        clearInterval(depositCheckInterval);
         isOnTrip = false;
     }
 
@@ -388,10 +408,7 @@
 
                 if (actionType === 'complete') {
                     document.getElementById('action-buttons').innerHTML = `<i>Đã hoàn tất!</i>`;
-                    let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
-                    fetch(`http://localhost:8080/api/v1/payments/driver/deduct-commission?driverId=${DRIVER_ID}&bookingId=${currentBookingId}&amount=${currentTripPrice}`, {
-                        method: 'POST', headers: {'Authorization': 'Bearer ' + cleanToken}
-                    }).then(() => fetchWallet());
+                    setTimeout(() => fetchWallet(), 1500);
                     setTimeout(() => {
                         document.getElementById('match-box').style.display = "none";
                         currentBookingId = null;
@@ -420,24 +437,35 @@
             .catch(err => alert("❌ THAO TÁC THẤT BẠI: " + err.message));
     }
 
-    // ⚡ CÁC HÀM XỬ LÝ PAYMENT (Mới thêm) ⚡
     function getCleanToken() {
         let token = document.getElementById('token').value.trim();
         return token.startsWith("Bearer ") ? token.replace("Bearer ", "") : token;
     }
 
-    function fetchWallet() {
+    function fetchWalletWithCallback(callback) {
         if (!DRIVER_ID) return;
         fetch(`http://localhost:8080/api/v1/payments/wallet`, {
             headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
         })
             .then(res => res.json())
             .then(data => {
-                document.getElementById('wallet-balance').innerText = data.balance ? data.balance.toLocaleString('vi-VN') : '0';
+                let balance = data.balance || 0;
+                document.getElementById('wallet-balance').innerText = balance.toLocaleString('vi-VN');
+                if (callback) callback(balance);
             }).catch(err => console.error("Lỗi lấy ví:", err));
     }
 
+    function fetchWallet() {
+        fetchWalletWithCallback(null);
+    }
+
     function depositMoney() {
+        let method = prompt("Nhập cổng muốn nạp (MOMO hoặc VNPAY):", "MOMO");
+        if (!method || (method.toUpperCase() !== 'MOMO' && method.toUpperCase() !== 'VNPAY')) {
+            alert("Phương thức thanh toán không hợp lệ!");
+            return;
+        }
+
         let amountStr = prompt("Nhập số tiền muốn nạp vào ví (VND):", "50000");
         if (!amountStr) return;
         let amount = parseFloat(amountStr);
@@ -454,7 +482,25 @@
             .then(data => {
                 if (data.paymentUrl) {
                     window.open(data.paymentUrl, '_blank');
-                    alert(`Đang chuyển hướng sang cổng ${method.toUpperCase()}...`);
+                    alert(`Đang chuyển hướng sang cổng ${method.toUpperCase()}...\nSau khi hoàn tất trên tab mới, số dư sẽ tự động cập nhật tại đây.`);
+
+                    let currentBalanceText = document.getElementById('wallet-balance').innerText.replace(/\./g, '');
+                    let oldBalance = parseFloat(currentBalanceText) || 0;
+
+                    clearInterval(depositCheckInterval);
+                    let pollCount = 0;
+
+                    depositCheckInterval = setInterval(() => {
+                        pollCount++;
+                        fetchWalletWithCallback((newBalance) => {
+                            if (newBalance > oldBalance) {
+                                clearInterval(depositCheckInterval);
+                                alert(`🎉 NẠP TIỀN THÀNH CÔNG!\nVí của bạn đã được cộng +${(newBalance - oldBalance).toLocaleString('vi-VN')} VND.`);
+                            }
+                        });
+
+                        if (pollCount >= 40) clearInterval(depositCheckInterval);
+                    }, 3000);
                 }
             }).catch(err => alert("Lỗi: " + err.message));
     }
@@ -464,7 +510,7 @@
         if (listEl.style.display === "block") {
             listEl.style.display = "none";
             return;
-        } // Toggle
+        }
 
         fetch(`http://localhost:8080/api/v1/payments/transactions`, {
             headers: {'Authorization': 'Bearer ' + getCleanToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
@@ -481,7 +527,7 @@
                     let sign = isIncome ? '+' : '-';
                     let desc = "";
                     if (tx.transactionType === 'DEPOSIT') {
-                        desc = `💳 Đã nạp tiền vào ví qua MoMo`;
+                        desc = `💳 Đã nạp tiền vào ví`;
                     } else if (tx.transactionType === 'TRIP_INCOME') {
                         desc = `🚕 Khách hàng thanh toán cuốc xe #${tx.bookingId}`;
                     } else if (tx.transactionType === 'COMMISSION_FEE') {

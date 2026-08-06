@@ -81,7 +81,7 @@ public class PaymentController {
     @PostMapping("/driver/withdraw")
     public ResponseEntity<Void> withdrawWallet(
             @RequestHeader("X-User-Id") Long driverId,
-            @RequestParam BigDecimal amount) {
+            @RequestParam Double amount) {
         walletService.withdrawWallet(driverId, amount);
         return ResponseEntity.ok().build();
     }

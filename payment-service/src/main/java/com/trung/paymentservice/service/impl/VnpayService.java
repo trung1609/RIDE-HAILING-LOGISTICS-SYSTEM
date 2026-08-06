@@ -4,7 +4,9 @@ import com.trung.paymentservice.config.VnpayConfig;
 import com.trung.paymentservice.dto.response.PaymentUrlResponse;
 import com.trung.paymentservice.entity.Transaction;
 import com.trung.paymentservice.entity.Wallet;
+import com.trung.paymentservice.event.BookingCompletedEvent;
 import com.trung.paymentservice.repository.TransactionRepository;
+import com.trung.paymentservice.repository.WalletRepository;
 import com.trung.paymentservice.service.VnpayEncoder;
 import com.trung.paymentservice.service.WalletService;
 import com.trung.paymentservice.strategy.PaymentStrategy;
@@ -28,6 +30,7 @@ public class VnpayService implements PaymentStrategy {
     private final VnpayEncoder vnpayEncoder;
     private final TransactionRepository transactionRepository;
     private final WalletService walletService;
+    private final WalletRepository walletRepository;
 
     @Override
     public String getPaymentMethod() {
@@ -96,10 +99,13 @@ public class VnpayService implements PaymentStrategy {
             transaction.setGatewayTransId("VNP_" + System.currentTimeMillis());
             transactionRepository.save(transaction);
 
-            Long driverId = parseData(orderInfo, "DR=");
+            Wallet wallet = walletRepository.findById(transaction.getWalletId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy ví tương ứng với giao dịch"));
+
             if (transaction.getTransactionType() == TransactionType.DEPOSIT) {
-                if (driverId != null) walletService.creditWallet(driverId, UserType.DRIVER, transaction.getAmount());
+                walletService.creditWallet(wallet.getUserId(), UserType.DRIVER, transaction.getAmount().doubleValue());
             } else {
+                Long driverId = parseData(orderInfo, "DR=");
                 creditDriverForTrip(driverId, transaction);
             }
         } else {
@@ -111,7 +117,7 @@ public class VnpayService implements PaymentStrategy {
     private void creditDriverForTrip(Long driverId, Transaction customerTransaction) {
         if (driverId == null) return;
         Wallet driverWallet = walletService.getOrCreateWallet(driverId, UserType.DRIVER);
-        walletService.creditWallet(driverId, UserType.DRIVER, customerTransaction.getAmount());
+        walletService.creditWallet(driverId, UserType.DRIVER, customerTransaction.getAmount().doubleValue());
 
         Transaction driverIncomeTx = Transaction.builder()
                 .walletId(driverWallet.getId())
@@ -124,7 +130,13 @@ public class VnpayService implements PaymentStrategy {
                 .build();
         transactionRepository.save(driverIncomeTx);
 
-        walletService.deductCommission(driverId, customerTransaction.getBookingId(), customerTransaction.getAmount());
+        BookingCompletedEvent event = BookingCompletedEvent.builder()
+                .bookingId(customerTransaction.getBookingId())
+                .driverId(driverId)
+                .amount(customerTransaction.getAmount().doubleValue())
+                .build();
+
+        walletService.deductCommission(event);
     }
 
     private Long parseData(String orderInfo, String key) {

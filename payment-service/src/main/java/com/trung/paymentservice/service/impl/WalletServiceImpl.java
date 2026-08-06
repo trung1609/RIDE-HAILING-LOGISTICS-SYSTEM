@@ -2,6 +2,7 @@ package com.trung.paymentservice.service.impl;
 
 import com.trung.paymentservice.entity.Transaction;
 import com.trung.paymentservice.entity.Wallet;
+import com.trung.paymentservice.event.BookingCompletedEvent;
 import com.trung.paymentservice.repository.TransactionRepository;
 import com.trung.paymentservice.repository.WalletRepository;
 import com.trung.paymentservice.service.WalletService;
@@ -11,8 +12,13 @@ import com.trung.paymentservice.util.enums.TransactionType;
 import com.trung.paymentservice.util.enums.UserType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,6 +30,7 @@ public class WalletServiceImpl implements WalletService {
 
     private final WalletRepository walletRepository;
     private final TransactionRepository transactionRepository;
+    private final RestTemplate restTemplate;
 
     @Override
     @Transactional(readOnly = true)
@@ -38,7 +45,7 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     @Transactional
-    public Wallet creditWallet(Long userId, UserType userType, BigDecimal amount) {
+    public Wallet creditWallet(Long userId, UserType userType, Double amount) {
         Wallet wallet = walletRepository.findByUserIdAndUserTypeWithLock(userId, userType)
                 .orElseGet(() -> walletRepository.save(Wallet.builder()
                         .userId(userId)
@@ -46,7 +53,8 @@ public class WalletServiceImpl implements WalletService {
                         .balance(BigDecimal.ZERO)
                         .build()));
 
-        wallet.setBalance(wallet.getBalance().add(amount));
+        BigDecimal bdAmount = BigDecimal.valueOf(amount);
+        wallet.setBalance(wallet.getBalance().add(bdAmount));
         log.info("Đã cộng {} VND vào ví của User ID {}. Số dư mới: {} VND",
                 amount, userId, wallet.getBalance());
         return walletRepository.save(wallet);
@@ -54,7 +62,17 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     @Transactional
-    public void deductCommission(Long driverId, Long bookingId, BigDecimal tripAmount) {
+    @KafkaListener(topics = "booking-completed-topic", groupId = "payment-service")
+    public void deductCommission(BookingCompletedEvent event) {
+        Long driverId = event.getDriverId();
+        Long bookingId = event.getBookingId();
+        Double tripAmount = event.getAmount();
+
+        if (driverId == null || bookingId == null || tripAmount == null) {
+            log.error("Dữ liệu Kafka Event không hợp lệ: {}", event);
+            return;
+        }
+
         boolean alreadyDeducted = transactionRepository.findByWalletIdOrderByCreatedAtDesc(
                         getOrCreateWallet(driverId, UserType.DRIVER).getId())
                 .stream().anyMatch(tx -> tx.getBookingId() != null
@@ -62,11 +80,12 @@ public class WalletServiceImpl implements WalletService {
                         && tx.getTransactionType() == TransactionType.COMMISSION_FEE);
 
         if (alreadyDeducted) {
-            log.info("Cuốc xe #{} đã được thu hoa hồng trước đó khi khách trả qua MoMo, bỏ qua trừ lần 2.", bookingId);
+            log.info("Cuốc xe #{} đã được thu hoa hồng trước đó, bỏ qua trừ lần 2.", bookingId);
             return;
         }
 
-        BigDecimal commissionFee = tripAmount.multiply(new BigDecimal("0.20"));
+        double commissionValue = tripAmount * 0.20;
+        BigDecimal commissionFee = BigDecimal.valueOf(commissionValue);
         Wallet wallet = walletRepository.findByUserIdAndUserTypeWithLock(driverId, UserType.DRIVER)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ví tài xế"));
 
@@ -80,7 +99,7 @@ public class WalletServiceImpl implements WalletService {
         Transaction transaction = Transaction.builder()
                 .walletId(wallet.getId())
                 .bookingId(bookingId)
-                .orderId("FEE_CASH_" + bookingId + "_" + System.currentTimeMillis())
+                .orderId("FEE_KAFKA_" + bookingId + "_" + System.currentTimeMillis())
                 .amount(commissionFee)
                 .transactionType(TransactionType.COMMISSION_FEE)
                 .paymentMethod(PaymentMethod.WALLET)
@@ -89,28 +108,43 @@ public class WalletServiceImpl implements WalletService {
         transactionRepository.save(transaction);
 
         log.info("Đã thu hoa hồng sau cuốc xe #{}: -{} VND", bookingId, commissionFee);
+        if (wallet.getBalance().compareTo(BigDecimal.valueOf(-50000)) <= 0) {
+            log.warn("Tài khoản Driver {} nợ cước hệ thống quá hạn mức (-50k). Số dư: {}. Ép OFFLINE!", driverId, wallet.getBalance());
+            try {
+                String lockUrl = "http://localhost:8080/api/v1/drivers/" + driverId + "/status?isActive=false";
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("X-User-Id", String.valueOf(driverId));
+
+                HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+                restTemplate.exchange(lockUrl, HttpMethod.PUT, requestEntity, Void.class);
+
+                log.info("Đã kích hoạt cơ chế đá tài xế {} về OFFLINE thành công.", driverId);
+            } catch (Exception e) {
+                log.error("Lỗi khi kết nối gọi ép Offline: {}", e.getMessage());
+            }
+        }
     }
 
     @Transactional
-    public void withdrawWallet(Long driverId, BigDecimal amount) {
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+    public void withdrawWallet(Long driverId, Double amount) {
+        if (amount <= 0) {
             throw new RuntimeException("Số tiền rút phải lớn hơn 0!");
         }
-
+        BigDecimal bdAmount = BigDecimal.valueOf(amount);
         Wallet wallet = walletRepository.findByUserIdAndUserTypeWithLock(driverId, UserType.DRIVER)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ví tài xế"));
 
-        if (wallet.getBalance().compareTo(amount) < 0) {
+        if (wallet.getBalance().compareTo(bdAmount) < 0) {
             throw new RuntimeException("Số dư ví không đủ để thực hiện lệnh rút tiền này!");
         }
 
-        wallet.setBalance(wallet.getBalance().subtract(amount));
+        wallet.setBalance(wallet.getBalance().subtract(bdAmount));
         walletRepository.save(wallet);
 
         Transaction transaction = Transaction.builder()
                 .walletId(wallet.getId())
                 .orderId("WITHDRAW_" + driverId + "_" + System.currentTimeMillis())
-                .amount(amount)
+                .amount(bdAmount)
                 .transactionType(TransactionType.WITHDRAWAL)
                 .paymentMethod(PaymentMethod.WALLET)
                 .status(TransactionStatus.SUCCESS)

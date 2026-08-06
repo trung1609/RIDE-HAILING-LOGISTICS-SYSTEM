@@ -7,6 +7,7 @@ import com.trung.paymentservice.dto.response.MomoCreateResponse;
 import com.trung.paymentservice.dto.response.PaymentUrlResponse;
 import com.trung.paymentservice.entity.Transaction;
 import com.trung.paymentservice.entity.Wallet;
+import com.trung.paymentservice.event.BookingCompletedEvent;
 import com.trung.paymentservice.repository.TransactionRepository;
 import com.trung.paymentservice.service.MomoEncoder;
 import com.trung.paymentservice.service.WalletService;
@@ -106,7 +107,7 @@ public class MomoService implements PaymentStrategy {
 
             if (transaction.getTransactionType() == TransactionType.DEPOSIT) {
                 Long userId = parseDataFromExtra(ipnRequest.getExtraData(), "USER_ID=");
-                if (userId != null) walletService.creditWallet(userId, UserType.DRIVER, transaction.getAmount());
+                if (userId != null) walletService.creditWallet(userId, UserType.DRIVER, transaction.getAmount().doubleValue());
             } else if (transaction.getTransactionType() == TransactionType.TRIP_PAYMENT) {
                 Long driverId = parseDataFromExtra(ipnRequest.getExtraData(), "DRIVER_ID=");
                 creditDriverForTrip(driverId, transaction);
@@ -128,7 +129,7 @@ public class MomoService implements PaymentStrategy {
 
             if (transaction.getTransactionType() == TransactionType.DEPOSIT) {
                 Long userId = parseDataFromExtra(extraData, "USER_ID=");
-                if (userId != null) walletService.creditWallet(userId, UserType.DRIVER, transaction.getAmount());
+                if (userId != null) walletService.creditWallet(userId, UserType.DRIVER, transaction.getAmount().doubleValue());
             } else if (transaction.getTransactionType() == TransactionType.TRIP_PAYMENT) {
                 Long driverId = parseDataFromExtra(extraData, "DRIVER_ID=");
                 creditDriverForTrip(driverId, transaction);
@@ -146,6 +147,8 @@ public class MomoService implements PaymentStrategy {
         if (driverId == null) return;
         Wallet driverWallet = walletService.getOrCreateWallet(driverId, UserType.DRIVER);
 
+        walletService.creditWallet(driverId, UserType.DRIVER, customerTransaction.getAmount().doubleValue());
+
         Transaction driverIncomeTx = Transaction.builder()
                 .walletId(driverWallet.getId())
                 .bookingId(customerTransaction.getBookingId())
@@ -157,7 +160,12 @@ public class MomoService implements PaymentStrategy {
                 .build();
         transactionRepository.save(driverIncomeTx);
 
-        walletService.deductCommission(driverId, customerTransaction.getBookingId(), customerTransaction.getAmount());
+        BookingCompletedEvent event = BookingCompletedEvent.builder()
+                .bookingId(customerTransaction.getBookingId())
+                .driverId(driverId)
+                .amount(customerTransaction.getAmount().doubleValue())
+                .build();
+        walletService.deductCommission(event);
     }
 
     private boolean verifyIpnSignature(MomoIpnRequest req) {

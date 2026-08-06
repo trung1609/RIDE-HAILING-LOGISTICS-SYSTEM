@@ -2,6 +2,7 @@ package com.trung.bookingservice.service.impl;
 
 import com.trung.bookingservice.dto.request.PricingRequest;
 import com.trung.bookingservice.dto.response.PricingResponse;
+import com.trung.bookingservice.event.BookingCompletedEvent;
 import com.trung.bookingservice.exception.BadRequestException;
 import com.trung.bookingservice.exception.ResourceNotFoundException;
 import com.trung.bookingservice.service.BookingService;
@@ -20,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -41,12 +43,11 @@ public class BookingServiceImpl implements BookingService {
     private final LocationClient locationClient;
     private final SimpMessagingTemplate messagingTemplate;
     private final StringRedisTemplate redisTemplate;
-
-    private static final double PRICE_PER_KM = 20000.0; // Cấu hình 20k/km
     private final UserDriverClient userDriverClient;
     private final BookingTimeoutService bookingTimeoutService;
     private final PricingClient pricingClient;
     private final BookingReassignService bookingReassignService;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -401,6 +402,15 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.COMPLETED);
         booking.setCompletedAt(LocalDateTime.now());
         bookingRepository.save(booking);
+
+        BookingCompletedEvent event = BookingCompletedEvent.builder()
+                .bookingId(booking.getId())
+                .driverId(driverId)
+                .customerId(booking.getCustomerId())
+                .amount(booking.getPrice())
+                .build();
+        kafkaTemplate.send("booking-completed-topic", event);
+        log.info("Đã gửi sự kiện BookingCompletedEvent cho chuyến đi {} đến Kafka.", bookingId);
 
         log.info("Chuyến đi {} đã HOÀN THÀNH.", bookingId);
         userDriverClient.updateDriverStatusInternal(driverId, DriverStatus.ONLINE);
