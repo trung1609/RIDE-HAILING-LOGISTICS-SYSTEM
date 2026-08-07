@@ -62,7 +62,7 @@ public class WalletServiceImpl implements WalletService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public Wallet getOrCreateWallet(Long userId, UserType userType) {
         try {
             return walletRepository.findByUserIdAndUserType(userId, userType)

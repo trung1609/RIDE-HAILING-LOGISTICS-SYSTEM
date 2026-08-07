@@ -1,5 +1,5 @@
 server:
-  port: ${USER_DRIVER_SERVICE_PORT:8081}
+  port: ${USER_DRIVER_SERVICE_PORT}
 
 spring:
   datasource:
@@ -18,7 +18,7 @@ spring:
   data:
     redis:
       host: ${REDIS_HOST}
-      port: ${REDIS_PORT:6379}
+      port: ${REDIS_PORT}
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}

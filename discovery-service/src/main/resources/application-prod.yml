@@ -1,9 +1,9 @@
 server:
-  port: ${DISCOVERY_SERVICE_PORT:8761}
+  port: ${DISCOVERY_SERVICE_PORT}
 
 eureka:
   instance:
-    hostname: ${EUREKA_INSTANCE_HOSTNAME:discovery-service}
+    hostname: ${EUREKA_INSTANCE_HOSTNAME}
   client:
     register-with-eureka: false
     fetch-registry: false

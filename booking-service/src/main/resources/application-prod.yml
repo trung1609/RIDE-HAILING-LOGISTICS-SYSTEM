@@ -1,12 +1,12 @@
 server:
-  port: ${BOOKING_SERVICE_PORT:8083}
+  port: ${BOOKING_SERVICE_PORT}
 
 spring:
   data:
     redis:
       host: ${REDIS_HOST}
-      port: ${REDIS_PORT:6379}
-      database: ${BOOKING_REDIS_DB:2}
+      port: ${REDIS_PORT}
+      database: ${BOOKING_REDIS_DB}
 
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/${BOOKING_DATABASE}

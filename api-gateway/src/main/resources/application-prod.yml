@@ -1,5 +1,5 @@
 server:
-  port: ${API_GATEWAY_PORT:8080}
+  port: ${API_GATEWAY_PORT}
 
 spring:
   cloud:
@@ -61,7 +61,7 @@ management:
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_DEFAULT_ZONE:http://discovery-service:8761/eureka/}
+      defaultZone: ${EUREKA_DEFAULT_ZONE}
   instance:
     prefer-ip-address: true
 

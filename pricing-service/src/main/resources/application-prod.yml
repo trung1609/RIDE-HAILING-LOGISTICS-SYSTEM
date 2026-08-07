@@ -1,12 +1,12 @@
 server:
-  port: ${PRICING_SERVICE_PORT:8084}
+  port: ${PRICING_SERVICE_PORT}
 
 spring:
   data:
     redis:
       host: ${REDIS_HOST}
-      port: ${REDIS_PORT:6379}
-      database: ${PRICING_REDIS_DB:3}
+      port: ${REDIS_PORT}
+      database: ${PRICING_REDIS_DB}
 
 eureka:
   client:
