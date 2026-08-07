@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Cổng Đăng Nhập & Đăng Ký - Ride Hailing</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .auth-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            width: 400px;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #777;
+        }
+
+        .tab.active {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .btn-submit:hover {
+            background-color: #0056b3;
+        }
+
+        .driver-fields {
+            display: none;
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .error-msg {
+            color: red;
+            font-size: 13px;
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="auth-container">
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('login')">ĐĂNG NHẬP</div>
+        <div class="tab" onclick="switchTab('register')">ĐĂNG KÝ</div>
+    </div>
+
+    <div id="login-form">
+        <div class="form-group">
+            <label>Số điện thoại</label>
+            <input type="text" id="login-phone" placeholder="VD: 0987654321">
+        </div>
+        <div class="form-group">
+            <label>Mật khẩu</label>
+            <input type="password" id="login-password" placeholder="Nhập mật khẩu">
+        </div>
+        <button class="btn-submit" onclick="doLogin()">ĐĂNG NHẬP</button>
+        <div id="login-error" class="error-msg"></div>
+    </div>
+
+    <div id="register-form" style="display: none;">
+        <div class="form-group">
+            <label>Họ và tên</label>
+            <input type="text" id="reg-name" placeholder="Nguyễn Văn A">
+        </div>
+        <div class="form-group">
+            <label>Số điện thoại</label>
+            <input type="text" id="reg-phone" placeholder="0987654321">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="reg-email" placeholder="email@example.com">
+        </div>
+        <div class="form-group">
+            <label>Mật khẩu</label>
+            <input type="password" id="reg-password" placeholder="Tối thiểu 6 ký tự">
+        </div>
+
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
+            <input type="checkbox" id="reg-is-driver" style="width: auto;" onchange="toggleDriverFields()">
+            <label for="reg-is-driver" style="margin: 0; cursor: pointer; color: #d32f2f;">Tôi muốn đăng ký làm Tài
+                Xế</label>
+        </div>
+
+        <div id="driver-fields" class="driver-fields">
+            <div class="form-group">
+                <label>Loại xe</label>
+                <select id="reg-vehicle-type">
+                    <option value="MOTORBIKE">Xe Máy</option>
+                    <option value="CAR_4_SEATS">Ô tô 4 chỗ</option>
+                    <option value="CAR_7_SEATS">Ô tô 7 chỗ</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Biển số xe</label>
+                <input type="text" id="reg-plate" placeholder="VD: 29A-12345">
+            </div>
+            <div class="form-group">
+                <label>Dòng xe</label>
+                <input type="text" id="reg-model" placeholder="VD: Honda Wave, Toyota Vios">
+            </div>
+        </div>
+
+        <button class="btn-submit" style="background-color: #28a745;" onclick="doRegister()">ĐĂNG KÝ</button>
+        <div id="reg-error" class="error-msg"></div>
+    </div>
+</div>
+
+<script>
+    const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const API_BASE = isLocal ? 'http://localhost:8080/api/v1' : 'https://api.ridehailingsystem.online/api/v1';
+
+    // Chuyển tab
+    function switchTab(tab) {
+        document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+        document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('login-error').innerText = '';
+        document.getElementById('reg-error').innerText = '';
+    }
+
+    // Ẩn/hiện Form nhập xe
+    function toggleDriverFields() {
+        const isDriver = document.getElementById('reg-is-driver').checked;
+        document.getElementById('driver-fields').style.display = isDriver ? 'block' : 'none';
+    }
+
+    // Xử lý Login
+    async function doLogin(phoneOverride, passOverride) {
+        const phone = phoneOverride || document.getElementById('login-phone').value;
+        const password = passOverride || document.getElementById('login-password').value;
+        const errorEl = document.getElementById('login-error');
+
+        if (!phone || !password) return errorEl.innerText = "Vui lòng nhập đủ SĐT và Mật khẩu";
+        errorEl.innerText = "Đang đăng nhập...";
+
+        try {
+            let res = await fetch(`${API_BASE}/auth/login`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phoneNumber: phone, password: password})
+            });
+            let data = await res.json();
+
+            if (!res.ok || !data.success) throw new Error(data.error || data.message || "Đăng nhập thất bại");
+
+            // Lưu Token và xử lý Role
+            const token = data.data.accessToken;
+            const role = data.data.user.role;
+            localStorage.setItem('accessToken', token);
+
+            if (role === 'DRIVER') {
+                window.location.href = 'driver-app.html';
+            } else {
+                window.location.href = 'customer-app.html';
+            }
+        } catch (err) {
+            errorEl.innerText = err.message;
+        }
+    }
+
+    // Xử lý Register
+    async function doRegister() {
+        const name = document.getElementById('reg-name').value;
+        const phone = document.getElementById('reg-phone').value;
+        const email = document.getElementById('reg-email').value;
+        const password = document.getElementById('reg-password').value;
+        const isDriver = document.getElementById('reg-is-driver').checked;
+        const errorEl = document.getElementById('reg-error');
+
+        if (!name || !phone || !email || !password) return errorEl.innerText = "Vui lòng điền đủ thông tin cơ bản";
+
+        let payload = {fullName: name, phoneNumber: phone, email: email, password: password};
+        let url = `${API_BASE}/users/register/customer`;
+
+        if (isDriver) {
+            url = `${API_BASE}/drivers/register`;
+            payload.vehicleType = document.getElementById('reg-vehicle-type').value;
+            payload.licensePlate = document.getElementById('reg-plate').value;
+            payload.vehicleModel = document.getElementById('reg-model').value;
+            if (!payload.licensePlate || !payload.vehicleModel) return errorEl.innerText = "Vui lòng nhập đủ thông tin xe";
+        }
+
+        errorEl.innerText = "Đang xử lý...";
+        errorEl.style.color = "blue";
+
+        try {
+            let res = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            let data = await res.json();
+
+            if (!res.ok || !data.success) throw new Error(data.message || data.error || "Đăng ký thất bại");
+
+            errorEl.style.color = "green";
+            errorEl.innerText = "Đăng ký thành công! Đang tự động đăng nhập...";
+
+            // Tự động Login sau khi đăng ký
+            setTimeout(() => doLogin(phone, password), 1000);
+        } catch (err) {
+            errorEl.style.color = "red";
+            errorEl.innerText = err.message;
+        }
+    }
+</script>
+</body>
+</html>

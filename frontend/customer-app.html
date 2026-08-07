@@ -79,7 +79,6 @@
             transition: transform 2s linear !important;
         }
 
-        /* ⚡ Button MoMo Style */
         .momo-btn {
             background-color: #a50064;
             color: white;
@@ -91,15 +90,38 @@
             border-radius: 5px;
             margin-left: 10px;
         }
+
+        /* ⚡ Header User Style */
+        .user-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            border-left: 5px solid #007bff;
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 6px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
-<h2>Ứng dụng Khách Hàng (Mô phỏng Giá Động)</h2>
 
-<div style="margin-bottom: 15px;">
-    <textarea id="token" rows="2" style="width: 100%;"
-              placeholder="Dán Access Token của CUSTOMER vào đây..."></textarea>
+<div class="user-header">
+    <span>👋 Xin chào Khách hàng: <b id="display-user" style="color:#007bff;">Đang tải...</b></span>
+    <button class="logout-btn" onclick="logout()">Đăng Xuất</button>
 </div>
+
+<h2>Ứng dụng Khách Hàng (Mô phỏng Giá Động)</h2>
 
 <button id="btnConnect" onclick="connectNotification()">1. Kết nối hệ thống</button>
 <button id="btnBook" onclick="bookRide()" disabled
@@ -143,9 +165,7 @@
 <ul id="log"></ul>
 
 <script>
-
     const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
     const API_BASE_URL = isLocal ? 'http://localhost:8080' : 'https://api.ridehailingsystem.online';
     const WS_BASE_URL = isLocal ? 'http://localhost:8080' : 'https://api.ridehailingsystem.online';
 
@@ -166,15 +186,55 @@
 
     const startPoint = [21.0245, 105.8574];
     const endPoint = [21.0585, 105.8202];
-
     const nearbyCarIcon = L.divIcon({
         className: 'nearby-car-icon',
         html: `<div style="width: 30px; height: 15px;"><svg width="30" height="15" viewBox="0 0 100 50" version="1.1" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100" height="50" rx="10" ry="10" style="fill:#FDD835;stroke:black;stroke-width:2" /><rect x="70" y="5" width="25" height="40" style="fill:#0D47A1;" /><text x="50" y="32" font-family="Arial" font-size="20" font-weight="bold" fill="black" text-anchor="middle">TAXI</text></svg></div>`,
-        iconSize: [30, 15], iconAnchor: [15, 7]
+        iconSize: [30, 15],
+        iconAnchor: [15, 7]
     });
 
-    // --- CÁC HÀM LOGIC CŨ GIỮ NGUYÊN HOÀN TOÀN ---
+    // --- BỔ SUNG LOGIC XỬ LÝ TOKEN ---
+    function getStoredToken() {
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+            window.location.href = 'index.html'; // ⚡ Bị đá ra index nếu ko có token
+            return null;
+        }
+        return token;
+    }
+
+    function parseJwt(token) {
+        try {
+            let base64Url = token.split('.')[1];
+            return JSON.parse(decodeURIComponent(window.atob(base64Url.replace(/-/g, '+').replace(/_/g, '/')).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function logout() {
+        const token = getStoredToken();
+        if (!token) return;
+        fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+            method: 'POST',
+            headers: {'Authorization': 'Bearer ' + token}
+        }).finally(() => {
+            localStorage.removeItem('accessToken');
+            window.location.href = 'index.html';
+        });
+    }
+
     window.onload = function () {
+        let t = getStoredToken();
+        if (!t) return;
+
+        let decoded = parseJwt(t);
+        if (decoded) {
+            customerId = decoded.userId || decoded.id; // Lấy ID
+            document.getElementById('display-user').innerText = decoded.sub + ' (ID: ' + customerId + ')';
+        }
+
+        // Init Map
         map = L.map('map').setView([21.0415, 105.8388], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: '&copy; OpenStreetMap'}).addTo(map);
         L.marker(startPoint).addTo(map).bindPopup("<b>Điểm đón</b>").openPopup();
@@ -186,8 +246,12 @@
         });
         L.marker(endPoint, {icon: redIcon}).addTo(map).bindPopup("<b>Điểm đến</b>");
         L.polyline([startPoint, endPoint], {color: '#007bff', weight: 4, dashArray: '10, 10'}).addTo(map);
+
+        // Tự động kết nối WebSockets
+        connectNotification();
     };
 
+    // --- CÁC HÀM LOGIC ĐÃ ĐƯỢC CẬP NHẬT ĐỂ DÙNG getStoredToken() ---
     function startCustomerTimer() {
         clearInterval(customerTimerInterval);
         let timeLeft = 20;
@@ -212,7 +276,7 @@
     }
 
     function loadNearbyDrivers() {
-        let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
+        let cleanToken = getStoredToken();
         if (!cleanToken) return;
         let url = `${API_BASE_URL}/api/v1/locations/nearby?longitude=${startPoint[1]}&latitude=${startPoint[0]}&radius=5.0`;
 
@@ -220,7 +284,8 @@
             .then(async res => {
                 if (res.status === 401) {
                     cleanupSystem();
-                    alert("Phiên làm việc đã hết hạn. Vui lòng cập nhật token mới!");
+                    alert("Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!");
+                    logout();
                     throw new Error("Unauthorized");
                 }
                 if (!res.ok) throw new Error("HTTP Status: " + res.status);
@@ -286,15 +351,6 @@
         }
     }
 
-    function parseJwt(token) {
-        try {
-            let base64Url = token.split('.')[1];
-            return JSON.parse(decodeURIComponent(window.atob(base64Url.replace(/-/g, '+').replace(/_/g, '/')).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
-        } catch (e) {
-            return null;
-        }
-    }
-
     function cleanupSystem() {
         clearInterval(nearbyDriversInterval);
         clearInterval(customerTimerInterval);
@@ -313,12 +369,8 @@
     }
 
     function connectNotification() {
-        let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
-        if (!cleanToken) {
-            alert("Vui lòng dán token vào!");
-            return;
-        }
-        customerId = parseJwt(cleanToken).userId || "1";
+        let cleanToken = getStoredToken();
+        if (!cleanToken) return;
 
         let socket = new SockJS(`${WS_BASE_URL}/ws-booking`);
         stompClient = Stomp.over(socket);
@@ -339,12 +391,10 @@
 
                 if (bookingInfo.status === 'PENDING') {
                     document.getElementById('btnCancelTrip').style.display = "inline-block";
-                    document.getElementById('btnPayMomo').style.display = "none"; // Ẩn nút thanh toán
+                    document.getElementById('btnPayMomo').style.display = "none";
                     hasInitiatedPayment = false;
                     let oldBadge = document.getElementById('paid-badge');
-                    if (oldBadge) {
-                        oldBadge.remove();
-                    }
+                    if (oldBadge) oldBadge.remove();
                     startRadar();
                     startCustomerTimer();
 
@@ -388,7 +438,6 @@
                     stopRadar();
                     document.getElementById('surge-badge').innerText = "Trở về bình thường";
                     document.getElementById('surge-badge').style.color = "blue";
-
                     isClientCanceling = false;
                     return;
                 }
@@ -427,7 +476,8 @@
     }
 
     function bookRide() {
-        let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
+        let cleanToken = getStoredToken();
+        if (!cleanToken) return;
         let payload = {
             "startLongitude": startPoint[1],
             "startLatitude": startPoint[0],
@@ -439,75 +489,62 @@
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cleanToken},
             body: JSON.stringify(payload)
-        })
-            .then(async res => {
-                if (!res.ok) {
-                    let err = await res.json().catch(() => ({}));
-                    throw new Error(err.message || "Lỗi hệ thống");
-                }
-                return res.json();
-            })
-            .then(data => {
-                if (data.status === 'CANCELLED') {
-                    alert("❌ ĐẶT XE THẤT BẠI: Hết xe rảnh!");
-                    return;
-                }
+        }).then(async res => {
+            if (!res.ok) {
+                let err = await res.json().catch(() => ({}));
+                throw new Error(err.message || "Lỗi hệ thống");
+            }
+            return res.json();
+        }).then(data => {
+            if (data.status === 'CANCELLED') {
+                alert("❌ ĐẶT XE THẤT BẠI: Hết xe rảnh!");
+                return;
+            }
 
-                currentBookingId = data.bookingId;
-                currentTripPrice = data.price;
+            currentBookingId = data.bookingId;
+            currentTripPrice = data.price;
+            hasInitiatedPayment = false;
+            let oldBadge = document.getElementById('paid-badge');
+            if (oldBadge) oldBadge.remove();
 
-                hasInitiatedPayment = false;
-                let oldBadge = document.getElementById('paid-badge');
-                if (oldBadge) {
-                    oldBadge.remove();
-                }
+            updateSurgeBadgeByPrice(data.price);
+            document.getElementById('trip-card').style.display = "block";
+            document.getElementById('btnPayMomo').style.display = "none";
+            document.getElementById('trip-status-text').innerText = `Mã chuyến: #${data.bookingId} | Đang chờ...`;
+            document.getElementById('btnCancelTrip').style.display = "inline-block";
 
-                updateSurgeBadgeByPrice(data.price);
-
-                document.getElementById('trip-card').style.display = "block";
-                document.getElementById('btnPayMomo').style.display = "none"; // Mới đặt thì chưa cho thanh toán vội
-                document.getElementById('trip-status-text').innerText = `Mã chuyến: #${data.bookingId} | Đang chờ...`;
-                document.getElementById('btnCancelTrip').style.display = "inline-block";
-
-                startRadar();
-                startCustomerTimer();
-                logSystem(data.bookingId, "PENDING", `Đã gửi yêu cầu đặt xe. Thành tiền: ${Math.round(data.price).toLocaleString('vi-VN')} VND`);
-            })
-            .catch(err => alert("⚠️ ĐẶT XE THẤT BẠI: " + err.message));
+            startRadar();
+            startCustomerTimer();
+            logSystem(data.bookingId, "PENDING", `Đã gửi yêu cầu đặt xe. Thành tiền: ${Math.round(data.price).toLocaleString('vi-VN')} VND`);
+        }).catch(err => alert("⚠️ ĐẶT XE THẤT BẠI: " + err.message));
     }
 
     function cancelCurrentTrip(isAutomaticTimeout = false) {
         if (!currentBookingId) return;
         if (!isAutomaticTimeout && !confirm("Bạn có chắc chắn muốn hủy?")) return;
 
-        let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
-        let userId = parseJwt(cleanToken).userId || "1";
+        let cleanToken = getStoredToken();
+        if (!cleanToken) return;
         isClientCanceling = true;
 
         fetch(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/cancel`, {
             method: 'PUT',
-            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': userId.toString()}
-        })
-            .then(async res => {
-                if (!res.ok) throw new Error("Không thể hủy!");
-                return res.json();
-            })
-            .then(data => {
-                document.getElementById('btnCancelTrip').style.display = "none";
-                document.getElementById('btnPayMomo').style.display = "none";
-                clearInterval(customerTimerInterval);
-                document.getElementById('customer-timer').style.display = "none";
-                stopRadar();
-                document.getElementById('trip-card').style.display = "none";
-                document.getElementById('surge-badge').innerText = "Trở về bình thường";
-                document.getElementById('surge-badge').style.color = "blue";
-
-                if (isAutomaticTimeout) {
-                    alert("❌ HỆ THỐNG TIMEOUT: Không tìm thấy phản hồi từ tài xế, cuốc xe tự động hủy!");
-                } else {
-                    alert("Đã hủy chuyến thành công!");
-                }
-            }).catch(err => {
+            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': customerId.toString()}
+        }).then(async res => {
+            if (!res.ok) throw new Error("Không thể hủy!");
+            return res.json();
+        }).then(data => {
+            document.getElementById('btnCancelTrip').style.display = "none";
+            document.getElementById('btnPayMomo').style.display = "none";
+            clearInterval(customerTimerInterval);
+            document.getElementById('customer-timer').style.display = "none";
+            stopRadar();
+            document.getElementById('trip-card').style.display = "none";
+            document.getElementById('surge-badge').innerText = "Trở về bình thường";
+            document.getElementById('surge-badge').style.color = "blue";
+            if (isAutomaticTimeout) alert("❌ HỆ THỐNG TIMEOUT: Không tìm thấy phản hồi từ tài xế, cuốc xe tự động hủy!");
+            else alert("Đã hủy chuyến thành công!");
+        }).catch(err => {
             isAutomaticTimeout = false;
             document.getElementById('btnCancelTrip').style.display = "none";
             clearInterval(customerTimerInterval);
@@ -522,82 +559,70 @@
             alert("Thông tin cuốc xe không hợp lệ!");
             return;
         }
-        let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
+        let cleanToken = getStoredToken();
+        if (!cleanToken) return;
 
         fetch(`${API_BASE_URL}/api/v1/payments/payment/create?method=${method}&type=TRIP&bookingId=${currentBookingId}&driverId=${assignedDriverId}&amount=${currentTripPrice}`, {
-            method: 'POST',
-            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': customerId.toString()}
-        })
-            .then(async res => {
-                if (!res.ok) throw new Error("Lỗi gọi cổng thanh toán");
-                return res.json();
-            })
-            .then(data => {
-                if (data.paymentUrl) {
-                    window.open(data.paymentUrl, '_blank');
-                    hasInitiatedPayment = true;
-                    document.getElementById('btnPayMomo').style.display = "none";
-                    document.getElementById('btnPayVnpay').style.display = "none";
+            method: 'POST', headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': customerId.toString()}
+        }).then(async res => {
+            if (!res.ok) throw new Error("Lỗi gọi cổng thanh toán");
+            return res.json();
+        }).then(data => {
+            if (data.paymentUrl) {
+                window.open(data.paymentUrl, '_blank');
+                hasInitiatedPayment = true;
+                document.getElementById('btnPayMomo').style.display = "none";
+                document.getElementById('btnPayVnpay').style.display = "none";
 
-                    let tripCard = document.getElementById('trip-card');
+                let tripCard = document.getElementById('trip-card');
+                let paidBadge = document.createElement("span");
+                paidBadge.id = "paid-badge";
+                paidBadge.style.cssText = "color: #ed6c02; font-weight: bold; margin-left: 10px; background: #fff3cd; padding: 5px 10px; border-radius: 5px;";
+                paidBadge.innerText = `⏳ Đang chờ kết quả từ ${method}...`;
 
-                    let paidBadge = document.createElement("span");
-                    paidBadge.id = "paid-badge";
-                    paidBadge.style.cssText = "color: #ed6c02; font-weight: bold; margin-left: 10px; background: #fff3cd; padding: 5px 10px; border-radius: 5px;";
-                    paidBadge.innerText = `⏳ Đang chờ kết quả từ ${method}...`;
+                let cancelPayBtn = document.createElement("button");
+                cancelPayBtn.id = "cancel-pay-btn";
+                cancelPayBtn.innerText = "❌ Đổi phương thức";
+                cancelPayBtn.style.cssText = "margin-left: 10px; background: none; border: 1px solid #dc3545; color: #dc3545; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 13px;";
 
-                    let cancelPayBtn = document.createElement("button");
-                    cancelPayBtn.id = "cancel-pay-btn";
-                    cancelPayBtn.innerText = "❌ Đổi phương thức";
-                    cancelPayBtn.style.cssText = "margin-left: 10px; background: none; border: 1px solid #dc3545; color: #dc3545; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 13px;";
-
-                    cancelPayBtn.onclick = function () {
-                        clearInterval(paymentCheckInterval);
-                        hasInitiatedPayment = false;
-                        paidBadge.remove();
-                        cancelPayBtn.remove();
-
-                        let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
-
-                        fetch(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/cancel-pending`, {
-                            method: 'PUT',
-                            headers: {'Authorization': 'Bearer ' + cleanToken}
-                        }).catch(err => console.warn("Lỗi hủy PENDING:", err));
-
-                        document.getElementById('btnPayMomo').style.display = "inline-block";
-                        document.getElementById('btnPayVnpay').style.display = "inline-block";
-                        logSystem(currentBookingId, "INFO", "Khách hàng đã hủy giao dịch cũ để chọn lại phương thức thanh toán.");
-                    };
-
-                    if (!document.getElementById('paid-badge')) {
-                        tripCard.appendChild(paidBadge);
-                        tripCard.appendChild(cancelPayBtn); // Thêm nút vào giao diện
-                    }
-
-                    logSystem(currentBookingId, "PAYMENT", `Bắt đầu gọi cổng ${method} số tiền ${currentTripPrice.toLocaleString('vi-VN')} đ`);
-
+                cancelPayBtn.onclick = function () {
                     clearInterval(paymentCheckInterval);
-                    paymentCheckInterval = setInterval(() => {
-                        fetch(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/payment-status`, {
-                            headers: {'Authorization': 'Bearer ' + cleanToken}
-                        })
-                            .then(res => res.text())
-                            .then(status => {
-                                if (status === 'SUCCESS') {
-                                    clearInterval(paymentCheckInterval);
+                    hasInitiatedPayment = false;
+                    paidBadge.remove();
+                    cancelPayBtn.remove();
+                    let cleanToken = getStoredToken();
+                    fetch(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/cancel-pending`, {
+                        method: 'PUT', headers: {'Authorization': 'Bearer ' + cleanToken}
+                    }).catch(err => console.warn("Lỗi hủy PENDING:", err));
 
-                                    // ⚡ KHI THÀNH CÔNG, XÓA LUÔN NÚT ĐỔI PHƯƠNG THỨC
-                                    let badge = document.getElementById('paid-badge');
-                                    let cancelBtn = document.getElementById('cancel-pay-btn');
-                                    if (badge) badge.remove();
-                                    if (cancelBtn) cancelBtn.remove();
+                    document.getElementById('btnPayMomo').style.display = "inline-block";
+                    document.getElementById('btnPayVnpay').style.display = "inline-block";
+                    logSystem(currentBookingId, "INFO", "Khách hàng đã hủy giao dịch cũ để chọn lại phương thức thanh toán.");
+                };
 
-                                    logSystem(currentBookingId, "COMPLETED", `Khách hàng ID ${customerId} đã thanh toán thành công cuốc xe #${currentBookingId} giá ${currentTripPrice.toLocaleString('vi-VN')} đ qua ${method}.`);
-                                }
-                            });
-                    }, 3000);
+                if (!document.getElementById('paid-badge')) {
+                    tripCard.appendChild(paidBadge);
+                    tripCard.appendChild(cancelPayBtn);
                 }
-            }).catch(err => alert("Lỗi: " + err.message));
+                logSystem(currentBookingId, "PAYMENT", `Bắt đầu gọi cổng ${method} số tiền ${currentTripPrice.toLocaleString('vi-VN')} đ`);
+
+                clearInterval(paymentCheckInterval);
+                paymentCheckInterval = setInterval(() => {
+                    fetch(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/payment-status`, {headers: {'Authorization': 'Bearer ' + cleanToken}})
+                        .then(res => res.text())
+                        .then(status => {
+                            if (status === 'SUCCESS') {
+                                clearInterval(paymentCheckInterval);
+                                let badge = document.getElementById('paid-badge');
+                                let cancelBtn = document.getElementById('cancel-pay-btn');
+                                if (badge) badge.remove();
+                                if (cancelBtn) cancelBtn.remove();
+                                logSystem(currentBookingId, "COMPLETED", `Khách hàng ID ${customerId} đã thanh toán thành công cuốc xe #${currentBookingId} giá ${currentTripPrice.toLocaleString('vi-VN')} đ qua ${method}.`);
+                            }
+                        });
+                }, 3000);
+            }
+        }).catch(err => alert("Lỗi: " + err.message));
     }
 </script>
 </body>
