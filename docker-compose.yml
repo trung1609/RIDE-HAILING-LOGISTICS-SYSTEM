@@ -16,6 +16,10 @@ services:
     <<: *java-app
     build:
       context: ./discovery-service
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     environment:
       SPRING_SERVER_PORT: ${DISCOVERY_SERVICE_PORT}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
@@ -34,6 +38,10 @@ services:
       context: ./api-gateway
     ports:
       - "${API_GATEWAY_PORT}:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     environment:
       SPRING_SERVER_PORT: ${API_GATEWAY_PORT}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
@@ -50,6 +58,10 @@ services:
     <<: *java-app
     build:
       context: ./user-driver-service
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     environment:
       SPRING_SERVER_PORT: ${USER_DRIVER_SERVICE_PORT}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
@@ -76,6 +88,10 @@ services:
     <<: *java-app
     build:
       context: ./location-service
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     environment:
       SPRING_SERVER_PORT: ${LOCATION_SERVICE_PORT}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
@@ -94,6 +110,10 @@ services:
     <<: *java-app
     build:
       context: ./booking-service
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     environment:
       SPRING_SERVER_PORT: ${BOOKING_SERVICE_PORT}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
@@ -119,6 +139,10 @@ services:
     <<: *java-app
     build:
       context: ./pricing-service
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     environment:
       SPRING_SERVER_PORT: ${PRICING_SERVICE_PORT}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
@@ -137,6 +161,10 @@ services:
     <<: *java-app
     build:
       context: ./payment-service
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     environment:
       SPRING_SERVER_PORT: ${PAYMENT_SERVICE_PORT}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
