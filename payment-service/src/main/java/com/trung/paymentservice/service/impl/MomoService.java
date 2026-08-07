@@ -29,6 +29,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
 import java.util.UUID;
 
 @Service
@@ -214,7 +215,10 @@ public class MomoService implements PaymentStrategy {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<MomoCreateRequest> entity = new HttpEntity<>(request, headers);
 
-            return restTemplate.postForEntity(momoConfig.getEndpoint(), entity, MomoCreateResponse.class).getBody();
+            // Gọi API MoMo
+            URI targetUrl = URI.create(momoConfig.getEndpoint());
+
+            return restTemplate.postForEntity(targetUrl, entity, MomoCreateResponse.class).getBody();
         } catch (HttpStatusCodeException ex) {
             log.error("MoMo API báo lỗi HTTP Status: {}, Response Body: {}", ex.getStatusCode(), ex.getResponseBodyAsString());
             throw new RuntimeException("MoMo từ chối yêu cầu: " + ex.getResponseBodyAsString());
