@@ -28,7 +28,7 @@ public class BookingController {
     @PutMapping("/{bookingId}/accept")
     public ResponseEntity<BookingResponse> acceptBooking(
             @RequestHeader("X-User-Id") Long driverId,
-            @PathVariable Long bookingId) throws BadRequestException {
+            @PathVariable Long bookingId) throws BadRequestException, ResourceNotFoundException {
 
         BookingResponse response = bookingService.acceptBooking(driverId, bookingId);
         return ResponseEntity.ok(response);

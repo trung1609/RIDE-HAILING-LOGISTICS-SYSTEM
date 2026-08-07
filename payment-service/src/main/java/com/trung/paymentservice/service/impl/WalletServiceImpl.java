@@ -16,10 +16,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -72,7 +74,10 @@ public class WalletServiceImpl implements WalletService {
         } catch (Exception e) {
             log.error("Lỗi xung đột khi tự động khởi tạo ví cho User {}, thử truy vấn lại: {}", userId, e.getMessage());
             return walletRepository.findByUserIdAndUserType(userId, userType)
-                    .orElseThrow(() -> new RuntimeException("Không thể khởi tạo hoặc truy vấn ví"));
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Không thể khởi tạo ví cho User ID " + userId + " sau nhiều lần thử. Vui lòng thử lại sau."
+                    ));
         }
     }
 
@@ -120,7 +125,10 @@ public class WalletServiceImpl implements WalletService {
         double commissionValue = tripAmount * 0.20;
         BigDecimal commissionFee = BigDecimal.valueOf(commissionValue);
         Wallet wallet = walletRepository.findByUserIdAndUserTypeWithLock(driverId, UserType.DRIVER)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy ví tài xế"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Không tìm thấy ví của tài xế ID " + driverId + " để trừ phí hoa hồng."
+                ));
 
         if (wallet.getBalance().compareTo(commissionFee) < 0) {
             log.warn("Ví tài xế không đủ tiền trừ phí sàn. Ghi nhận công nợ âm.");
@@ -161,14 +169,23 @@ public class WalletServiceImpl implements WalletService {
     @Transactional
     public void withdrawWallet(Long driverId, Double amount) {
         if (amount <= 0) {
-            throw new RuntimeException("Số tiền rút phải lớn hơn 0!");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Số tiền rút phải lớn hơn 0!"
+            );
         }
         BigDecimal bdAmount = BigDecimal.valueOf(amount);
         Wallet wallet = walletRepository.findByUserIdAndUserTypeWithLock(driverId, UserType.DRIVER)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy ví tài xế"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Không tìm thấy ví của tài xế ID " + driverId + " để trừ phí hoa hồng."
+                ));
 
         if (wallet.getBalance().compareTo(bdAmount) < 0) {
-            throw new RuntimeException("Số dư ví không đủ để thực hiện lệnh rút tiền này!");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Số dư ví không đủ để thực hiện lệnh rút tiền này!"
+            );
         }
 
         wallet.setBalance(wallet.getBalance().subtract(bdAmount));

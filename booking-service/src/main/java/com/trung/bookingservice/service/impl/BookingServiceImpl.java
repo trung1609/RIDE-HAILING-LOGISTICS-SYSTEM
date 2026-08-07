@@ -20,6 +20,7 @@ import com.trung.bookingservice.util.enums.DriverStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -28,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationAdapter;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -246,7 +248,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public BookingResponse acceptBooking(Long driverId, Long bookingId) throws BadRequestException {
+    public BookingResponse acceptBooking(Long driverId, Long bookingId) throws BadRequestException, ResourceNotFoundException {
         log.info("Tài xế {} đang yêu cầu nhận chuyến đi có ID = {}", driverId, bookingId);
         String reservedBookingId = redisTemplate.opsForValue().get("drivers:reserved:" + driverId);
 
@@ -255,7 +257,8 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException("Thao tác thất bại: Cuốc xe này không dành cho bạn, hoặc đã bị khách hàng hủy/hết hạn!");
         }
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy chuyến đi."));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chuyến đi.)"
+                ));
 
         if (booking.getStatus() != BookingStatus.PENDING) {
             throw new BadRequestException("Chuyến đi không hợp lệ để chấp nhận. Trạng thái hiện tại: " + booking.getStatus());
