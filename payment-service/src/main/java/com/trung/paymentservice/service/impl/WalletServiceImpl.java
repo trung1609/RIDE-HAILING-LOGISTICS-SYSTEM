@@ -31,7 +31,7 @@ public class WalletServiceImpl implements WalletService {
 
     private final WalletRepository walletRepository;
     private final TransactionRepository transactionRepository;
-    private final RestTemplate restTemplate;
+    private final RestTemplate internalRestTemplate;
 
     @Transactional
     @KafkaListener(topics = "driver-registered-topic", groupId = "payment-service")
@@ -149,7 +149,7 @@ public class WalletServiceImpl implements WalletService {
                 headers.set("X-User-Id", String.valueOf(driverId));
 
                 HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
-                restTemplate.exchange(lockUrl, HttpMethod.PUT, requestEntity, Void.class);
+                internalRestTemplate.exchange(lockUrl, HttpMethod.PUT, requestEntity, Void.class);
 
                 log.info("Đã kích hoạt cơ chế đá tài xế {} về OFFLINE thành công.", driverId);
             } catch (Exception e) {
