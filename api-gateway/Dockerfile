@@ -1,7 +1,7 @@
 FROM eclipse-temurin:17-jdk-alpine AS builder
 WORKDIR /app
 COPY . .
-
+RUN chmod +x gradlew
 ENV GRADLE_OPTS="-Xmx512m -Dorg.gradle.daemon=false"
 
 RUN ./gradlew clean bootJar -x test --no-daemon
