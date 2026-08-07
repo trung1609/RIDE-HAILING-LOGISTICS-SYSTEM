@@ -565,29 +565,49 @@
 
         fetch(`${API_BASE_URL}/api/v1/payments/transactions`, {
             headers: {'Authorization': 'Bearer ' + getStoredToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
-        }).then(res => res.json()).then(data => {
-            listEl.innerHTML = "";
-            if (data.length === 0) listEl.innerHTML = "<li>Chưa có giao dịch nào.</li>";
-            data.forEach(tx => {
-                let isIncome = (tx.transactionType === 'DEPOSIT' || tx.transactionType === 'TRIP_INCOME');
-                let color = isIncome ? 'green' : 'red';
-                let sign = isIncome ? '+' : '-';
-                let desc = "";
-                if (tx.transactionType === 'DEPOSIT') desc = `💳 Đã nạp tiền vào ví`;
-                else if (tx.transactionType === 'TRIP_INCOME') desc = `🚕 Khách hàng thanh toán cuốc xe #${tx.bookingId}`;
-                else if (tx.transactionType === 'COMMISSION_FEE') desc = `📉 Trừ phí hoa hồng hệ thống cuốc xe #${tx.bookingId}`;
-                else if (tx.transactionType === 'WITHDRAWAL') desc = `🏧 Rút tiền từ ví về tài khoản cá nhân`;
-                else desc = tx.transactionType;
+        })
+            .then(async res => {
+                if (!res.ok) {
+                    return [];
+                }
+                return res.json();
+            })
+            .then(data => {
+                listEl.innerHTML = "";
 
-                listEl.innerHTML += `
+                let txList = (data && data.data !== undefined) ? data.data : data;
+
+                if (!Array.isArray(txList) || txList.length === 0) {
+                    listEl.innerHTML = "<li style='padding: 10px; color: #555; font-style: italic;'>Chưa có giao dịch nào.</li>";
+                    listEl.style.display = "block";
+                    return;
+                }
+
+                txList.forEach(tx => {
+                    let isIncome = (tx.transactionType === 'DEPOSIT' || tx.transactionType === 'TRIP_INCOME');
+                    let color = isIncome ? 'green' : 'red';
+                    let sign = isIncome ? '+' : '-';
+
+                    let desc = "";
+                    if (tx.transactionType === 'DEPOSIT') desc = `💳 Đã nạp tiền vào ví`;
+                    else if (tx.transactionType === 'TRIP_INCOME') desc = `🚕 Thu nhập cuốc xe #${tx.bookingId}`;
+                    else if (tx.transactionType === 'COMMISSION_FEE') desc = `📉 Trừ phí hoa hồng cuốc #${tx.bookingId}`;
+                    else if (tx.transactionType === 'WITHDRAWAL') desc = `🏧 Rút tiền về tài khoản cá nhân`;
+                    else desc = tx.transactionType;
+
+                    listEl.innerHTML += `
                 <li style="border-bottom:1px solid #eee; padding:10px 0; line-height: 1.5;">
                     <div style="font-weight:bold; color: #333;">${desc}</div>
                     <span style="color:${color}; font-size: 16px; font-weight:bold;">${sign}${tx.amount.toLocaleString('vi-VN')} đ</span>
                     <i style="color:gray; font-size:12px; margin-left: 5px;">(${tx.status})</i>
                 </li>`;
+                });
+                listEl.style.display = "block";
+            })
+            .catch(err => {
+                listEl.innerHTML = "<li style='padding: 10px; color: #555; font-style: italic;'>Chưa có giao dịch nào.</li>";
+                listEl.style.display = "block";
             });
-            listEl.style.display = "block";
-        }).catch(err => alert("Lỗi tải lịch sử!"));
     }
 
     function withdrawMoney() {
