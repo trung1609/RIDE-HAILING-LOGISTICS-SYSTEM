@@ -24,9 +24,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.UUID;
 
 @Service
@@ -196,7 +198,8 @@ public class MomoService implements PaymentStrategy {
 
     private MomoCreateResponse executeMomoApi(String orderId, String requestId, BigDecimal amount, String orderInfo, String requestType, String extraData) {
         try {
-            String rawSignature = "accessKey=" + momoConfig.getAccessKey() + "&amount=" + amount.longValue()
+            String amountStr = String.valueOf(amount.setScale(0, RoundingMode.HALF_UP).longValue());
+            String rawSignature = "accessKey=" + momoConfig.getAccessKey() + "&amount=" + amountStr
                     + "&extraData=" + extraData + "&ipnUrl=" + momoConfig.getIpnUrl() + "&orderId=" + orderId
                     + "&orderInfo=" + orderInfo + "&partnerCode=" + momoConfig.getPartnerCode()
                     + "&redirectUrl=" + momoConfig.getRedirectUrl() + "&requestId=" + requestId + "&requestType=" + requestType;
@@ -212,8 +215,12 @@ public class MomoService implements PaymentStrategy {
             HttpEntity<MomoCreateRequest> entity = new HttpEntity<>(request, headers);
 
             return restTemplate.postForEntity(momoConfig.getEndpoint(), entity, MomoCreateResponse.class).getBody();
+        } catch (HttpStatusCodeException ex) {
+            log.error("MoMo API báo lỗi HTTP Status: {}, Response Body: {}", ex.getStatusCode(), ex.getResponseBodyAsString());
+            throw new RuntimeException("MoMo từ chối yêu cầu: " + ex.getResponseBodyAsString());
         } catch (Exception e) {
-            throw new RuntimeException("Lỗi kết nối MoMo");
+            log.error("Lỗi hệ thống khi gọi MoMo: ", e);
+            throw new RuntimeException("Lỗi kết nối MoMo do hệ thống nội bộ");
         }
     }
 }
