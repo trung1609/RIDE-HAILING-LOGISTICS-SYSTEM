@@ -108,8 +108,11 @@
 
     const protocol = isLocal ? 'http' : 'https';
 
-    const API_BASE_URL = isLocal ? 'http://localhost:8080' : `${protocol}://${window.location.hostname}`;
-    const WS_BASE_URL = isLocal ? 'http://localhost:8080' : `${protocol}://${window.location.hostname}`;
+    // const API_BASE_URL = isLocal ? 'http://localhost:8080' : `${protocol}://${window.location.hostname}`;
+    // const WS_BASE_URL = isLocal ? 'http://localhost:8080' : `${protocol}://${window.location.hostname}`;
+
+    const API_BASE_URL = "http://localhost:8080";
+    const WS_BASE_URL = "http://localhost:8080";
 
     let stompLocationClient = null;
     let stompBookingClient = null;
@@ -204,7 +207,7 @@
                 if (!res.ok) throw new Error("Lỗi hệ thống, không thể bật app!");
                 initMap();
 
-                let locSocket = new SockJS('${WS_BASE_URL}/ws-location');
+                let locSocket = new SockJS(`${WS_BASE_URL}/ws-location`);
                 stompLocationClient = Stomp.over(locSocket);
 
                 stompLocationClient.connect({"driverId": DRIVER_ID}, function () {
@@ -260,7 +263,7 @@
                     handleSystemOffline();
                 });
 
-                let bookSocket = new SockJS('${WS_BASE_URL}/ws-booking');
+                let bookSocket = new SockJS(`${WS_BASE_URL}/ws-booking`);
                 stompBookingClient = Stomp.over(bookSocket);
                 stompBookingClient.connect({"userId": DRIVER_ID}, function () {
                     stompBookingClient.subscribe('/user/queue/driver/match', function (message) {

@@ -28,7 +28,7 @@ public class SecurityConfig {
                                 "/api/v1/payments/momo/return",
                                 "/api/v1/payments/vnpay/return",
                                 "/api/v1/payments/booking/**").permitAll()
-                        .anyRequest().authenticated()
+                        .anyRequest().permitAll()
                 )
                 .addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

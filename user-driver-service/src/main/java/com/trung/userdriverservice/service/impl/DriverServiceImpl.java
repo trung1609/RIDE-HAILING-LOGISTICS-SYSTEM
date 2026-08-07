@@ -6,6 +6,7 @@ import com.trung.userdriverservice.dto.response.ApiResponse;
 import com.trung.userdriverservice.dto.response.UserResponse;
 import com.trung.userdriverservice.entity.DriverProfile;
 import com.trung.userdriverservice.entity.User;
+import com.trung.userdriverservice.event.DriverRegisteredEvent;
 import com.trung.userdriverservice.exception.BadRequestException;
 import com.trung.userdriverservice.exception.ResourceConflictException;
 import com.trung.userdriverservice.exception.ResourceNotFoundException;
@@ -17,6 +18,7 @@ import com.trung.userdriverservice.service.client.LocationClient;
 import com.trung.userdriverservice.util.enums.DriverStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,7 @@ public class DriverServiceImpl implements DriverService {
     private final DriverProfileRepository driverProfileRepository;
     private final UserMapper userMapper;
     private final LocationClient locationClient;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Override
     @Transactional
@@ -52,6 +55,14 @@ public class DriverServiceImpl implements DriverService {
 
         DriverProfile driverProfile = userMapper.toDriverProfileEntity(request, savedUser);
         driverProfileRepository.save(driverProfile);
+
+        try {
+            DriverRegisteredEvent event = new DriverRegisteredEvent(driverProfile.getDriverId());
+            kafkaTemplate.send("driver-registered-topic", event);
+            log.info("Đã gửi sự kiện đăng ký Driver thành công cho ID: {} qua Kafka", savedUser.getId());
+        } catch (Exception e) {
+            log.error("Lỗi khi bắn sự kiện Kafka đăng ký tài xế: {}", e.getMessage());
+        }
 
         return ApiResponse.<UserResponse>builder()
                 .data(userMapper.toUserResponse(savedUser))

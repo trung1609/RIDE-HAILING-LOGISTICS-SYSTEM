@@ -31,6 +31,8 @@ services:
     <<: *java-app
     build:
       context: ./api-gateway
+    ports:
+      - "${API_GATEWAY_PORT}:8080"
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: ${EUREKA_DEFAULT_ZONE}

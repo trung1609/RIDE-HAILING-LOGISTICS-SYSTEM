@@ -3,6 +3,7 @@ package com.trung.paymentservice.service.impl;
 import com.trung.paymentservice.entity.Transaction;
 import com.trung.paymentservice.entity.Wallet;
 import com.trung.paymentservice.event.BookingCompletedEvent;
+import com.trung.paymentservice.event.DriverRegisteredEvent;
 import com.trung.paymentservice.repository.TransactionRepository;
 import com.trung.paymentservice.repository.WalletRepository;
 import com.trung.paymentservice.service.WalletService;
@@ -32,15 +33,47 @@ public class WalletServiceImpl implements WalletService {
     private final TransactionRepository transactionRepository;
     private final RestTemplate restTemplate;
 
+    @Transactional
+    @KafkaListener(topics = "driver-registered-topic", groupId = "payment-service")
+    public void handleDriverRegistered(DriverRegisteredEvent event) {
+        if (event == null || event.getDriverId() == null) {
+            log.error("Dữ liệu Kafka Event driver-registered không hợp lệ.");
+            return;
+        }
+
+        Long driverId = event.getDriverId();
+
+        boolean exists = walletRepository.findByUserIdAndUserType(driverId, UserType.DRIVER).isPresent();
+        if (exists) {
+            log.info("Ví của Driver ID {} đã tồn tại từ trước, không cần tạo mới.", driverId);
+            return;
+        }
+
+        Wallet wallet = Wallet.builder()
+                .userId(driverId)
+                .userType(UserType.DRIVER)
+                .balance(BigDecimal.ZERO)
+                .build();
+
+        walletRepository.save(wallet);
+        log.info("Kafka: Khởi tạo thành công Ví 0 VND cho Driver mới đăng ký, ID: {}", driverId);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public Wallet getOrCreateWallet(Long userId, UserType userType) {
-        return walletRepository.findByUserIdAndUserType(userId, userType)
-                .orElseGet(() -> walletRepository.save(Wallet.builder()
-                        .userId(userId)
-                        .userType(userType)
-                        .balance(BigDecimal.ZERO)
-                        .build()));
+        try {
+            return walletRepository.findByUserIdAndUserType(userId, userType)
+                    .orElseGet(() -> walletRepository.save(Wallet.builder()
+                            .userId(userId)
+                            .userType(userType)
+                            .balance(BigDecimal.ZERO)
+                            .build()));
+        } catch (Exception e) {
+            log.error("Lỗi xung đột khi tự động khởi tạo ví cho User {}, thử truy vấn lại: {}", userId, e.getMessage());
+            return walletRepository.findByUserIdAndUserType(userId, userType)
+                    .orElseThrow(() -> new RuntimeException("Không thể khởi tạo hoặc truy vấn ví"));
+        }
     }
 
     @Override

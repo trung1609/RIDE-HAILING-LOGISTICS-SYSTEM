@@ -143,6 +143,16 @@
 <ul id="log"></ul>
 
 <script>
+
+    const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    const protocol = isLocal ? 'http' : 'https';
+
+    // const API_BASE_URL = isLocal ? 'http://localhost:8080' : `${protocol}://${window.location.hostname}`;
+    // const WS_BASE_URL = isLocal ? 'http://localhost:8080' : `${protocol}://${window.location.hostname}`;
+
+    const API_BASE_URL = "http://localhost:8080";
+    const WS_BASE_URL = "http://localhost:8080";
     let stompClient = null;
     let customerId = null;
     let currentBookingId = null;
@@ -208,7 +218,7 @@
     function loadNearbyDrivers() {
         let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
         if (!cleanToken) return;
-        let url = `http://localhost:8080/api/v1/locations/nearby?longitude=${startPoint[1]}&latitude=${startPoint[0]}&radius=5.0`;
+        let url = `${API_BASE_URL}/api/v1/locations/nearby?longitude=${startPoint[1]}&latitude=${startPoint[0]}&radius=5.0`;
 
         fetch(url, {method: 'GET', headers: {'Authorization': 'Bearer ' + cleanToken}})
             .then(async res => {
@@ -314,7 +324,7 @@
         }
         customerId = parseJwt(cleanToken).userId || "1";
 
-        let socket = new SockJS('http://localhost:8080/ws-booking');
+        let socket = new SockJS(`${WS_BASE_URL}/ws-booking`);
         stompClient = Stomp.over(socket);
 
         stompClient.connect({"userId": customerId.toString()}, function (frame) {
@@ -429,7 +439,7 @@
             "endLatitude": endPoint[0]
         };
 
-        fetch('http://localhost:8080/api/v1/bookings', {
+        fetch(`${API_BASE_URL}/api/v1/bookings`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cleanToken},
             body: JSON.stringify(payload)
@@ -478,7 +488,7 @@
         let userId = parseJwt(cleanToken).userId || "1";
         isClientCanceling = true;
 
-        fetch(`http://localhost:8080/api/v1/bookings/${currentBookingId}/cancel`, {
+        fetch(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/cancel`, {
             method: 'PUT',
             headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': userId.toString()}
         })
@@ -518,7 +528,7 @@
         }
         let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
 
-        fetch(`http://localhost:8080/api/v1/payments/payment/create?method=${method}&type=TRIP&bookingId=${currentBookingId}&driverId=${assignedDriverId}&amount=${currentTripPrice}`, {
+        fetch(`${API_BASE_URL}/api/v1/payments/payment/create?method=${method}&type=TRIP&bookingId=${currentBookingId}&driverId=${assignedDriverId}&amount=${currentTripPrice}`, {
             method: 'POST',
             headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': customerId.toString()}
         })
@@ -553,7 +563,7 @@
 
                         let cleanToken = document.getElementById('token').value.trim().replace("Bearer ", "");
 
-                        fetch(`http://localhost:8080/api/v1/payments/booking/${currentBookingId}/cancel-pending`, {
+                        fetch(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/cancel-pending`, {
                             method: 'PUT',
                             headers: {'Authorization': 'Bearer ' + cleanToken}
                         }).catch(err => console.warn("Lỗi hủy PENDING:", err));
@@ -572,7 +582,7 @@
 
                     clearInterval(paymentCheckInterval);
                     paymentCheckInterval = setInterval(() => {
-                        fetch(`http://localhost:8080/api/v1/payments/booking/${currentBookingId}/payment-status`, {
+                        fetch(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/payment-status`, {
                             headers: {'Authorization': 'Bearer ' + cleanToken}
                         })
                             .then(res => res.text())
