@@ -144,7 +144,7 @@ public class WalletServiceImpl implements WalletService {
         if (wallet.getBalance().compareTo(BigDecimal.valueOf(-50000)) <= 0) {
             log.warn("Tài khoản Driver {} nợ cước hệ thống quá hạn mức (-50k). Số dư: {}. Ép OFFLINE!", driverId, wallet.getBalance());
             try {
-                String lockUrl = "http://localhost:8080/api/v1/drivers/" + driverId + "/status?isActive=false";
+                String lockUrl = "http://USER-DRIVER-SERVICE/api/v1/drivers/" + driverId + "/status?isActive=false";
                 HttpHeaders headers = new HttpHeaders();
                 headers.set("X-User-Id", String.valueOf(driverId));
 
