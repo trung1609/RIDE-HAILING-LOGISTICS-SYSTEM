@@ -177,7 +177,7 @@ public class WalletServiceImpl implements WalletService {
         BigDecimal bdAmount = BigDecimal.valueOf(amount);
         Wallet wallet = walletRepository.findByUserIdAndUserTypeWithLock(driverId, UserType.DRIVER)
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
+                        HttpStatus.BAD_REQUEST,
                         "Không tìm thấy ví của tài xế ID " + driverId + " để trừ phí hoa hồng."
                 ));
 
