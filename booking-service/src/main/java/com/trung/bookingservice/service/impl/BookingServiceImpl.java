@@ -313,7 +313,10 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse cancelBookingByDriver(Long driverId, Long bookingId) throws ResourceNotFoundException, BadRequestException {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chuyến đi."));
-
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            log.warn("Tài xế {} từ chối nhưng cuốc xe {} đã bị hệ thống thu hồi trước đó do hết giờ.", driverId, bookingId);
+            return convertToResponse(booking, 0.0);
+        }
         if (booking.getStatus() == BookingStatus.PENDING) {
             String reservedDriverIdStr = redisTemplate.opsForValue().get("booking:driver:" + bookingId);
             if (reservedDriverIdStr != null && reservedDriverIdStr.equals(driverId.toString())) {

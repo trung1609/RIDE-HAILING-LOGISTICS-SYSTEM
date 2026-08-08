@@ -441,7 +441,7 @@
 
     function startDriverTimer() {
         clearInterval(driverTimerInterval);
-        let timeLeft = 20;
+        let timeLeft = 15;
         let timerEl = document.getElementById('driver-timer');
         timerEl.style.display = "inline";
         timerEl.innerText = `(⏳ Còn: ${timeLeft}s)`;
@@ -487,25 +487,24 @@
     function driverCancelRide(isAutoReject = false) {
         if (!isAutoReject && !confirm("Bạn có chắc chắn muốn hủy/bỏ qua cuốc xe này không?")) return;
 
-        fetchWithAuth(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/driver-cancel`, {
-            method: 'PUT'
-        }).then(async res => {
-            document.getElementById('match-box').style.display = "none";
-            let oldId = currentBookingId;
-            currentBookingId = null;
-            isOnTrip = false;
+        document.getElementById('match-box').style.display = "none";
+        let oldId = currentBookingId;
+        currentBookingId = null;
+        isOnTrip = false;
 
+        fetchWithAuth(`${API_BASE_URL}/api/v1/bookings/${oldId}/driver-cancel`, {
+            method: 'PUT',
+            headers: {'X-User-Id': DRIVER_ID.toString()}
+        }).then(async res => {
             if (isAutoReject) {
-                document.getElementById('log').innerHTML += `<li style="color:orange;">⏳ Đã hết thời gian 20s. Hệ thống đang chuyển cuốc #${oldId} cho tài xế khác.</li>`;
+                document.getElementById('log').innerHTML += `<li style="color:orange;">⏳ Đã hết 15s. Hệ thống đang luân chuyển cuốc #${oldId} cho tài xế khác.</li>`;
             } else {
-                alert("Đã hủy chuyến đi thành công!");
-                document.getElementById('log').innerHTML += `<li style="color:red;">❌ Bạn đã từ chối/hủy cuốc xe #${oldId}.</li>`;
+                alert("Đã hủy/bỏ qua chuyến đi!");
+                document.getElementById('log').innerHTML += `<li style="color:red;">❌ Bạn đã từ chối cuốc xe #${oldId}.</li>`;
             }
             document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
         }).catch(err => {
-            document.getElementById('match-box').style.display = "none";
-            currentBookingId = null;
-            isOnTrip = false;
+            console.warn("Lỗi đồng bộ hủy cuốc:", err);
         });
     }
 
