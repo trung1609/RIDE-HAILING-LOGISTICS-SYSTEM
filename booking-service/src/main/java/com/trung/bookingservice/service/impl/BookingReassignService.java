@@ -91,7 +91,7 @@ public class BookingReassignService {
                 Boolean isLockAcquired = redisTemplate.opsForValue().setIfAbsent(
                         "drivers:reserved:" + driverId,
                         bookingId.toString(),
-                        20,
+                        30,
                         TimeUnit.SECONDS
                 );
 

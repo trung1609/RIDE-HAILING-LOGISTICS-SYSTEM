@@ -441,7 +441,7 @@
 
     function startDriverTimer() {
         clearInterval(driverTimerInterval);
-        let timeLeft = 15;
+        let timeLeft = 20;
         let timerEl = document.getElementById('driver-timer');
         timerEl.style.display = "inline";
         timerEl.innerText = `(⏳ Còn: ${timeLeft}s)`;
@@ -452,6 +452,8 @@
                 timerEl.innerText = `(⏳ Còn: ${timeLeft}s)`;
             } else {
                 clearInterval(driverTimerInterval);
+                timerEl.innerText = `(🔄 Đang chuyển cuốc...)`;
+                document.getElementById('action-buttons').innerHTML = `<i style="color: gray;">Hệ thống đang xử lý...</i>`;
             }
         }, 1000);
     }

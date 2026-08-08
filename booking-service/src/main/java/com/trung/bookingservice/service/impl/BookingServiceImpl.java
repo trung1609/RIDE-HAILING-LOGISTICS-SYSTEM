@@ -151,7 +151,7 @@ public class BookingServiceImpl implements BookingService {
                 Boolean isLockAcquired = redisTemplate.opsForValue().setIfAbsent(
                         "drivers:reserved:" + driverId,
                         booking.getId().toString(),
-                        20,
+                        30,
                         TimeUnit.SECONDS
                 );
 
