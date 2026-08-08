@@ -87,10 +87,11 @@ public class AuthController {
         boolean isClearToken = (token == null || token.isEmpty());
         ResponseCookie cookie = ResponseCookie.from("refresh_token", token)
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/")
                 .maxAge(isClearToken ? 0 : maxAgeSeconds)
-                .sameSite("Lax")
+                .sameSite("None")
+                .domain("ridehailingsystem.online")
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
