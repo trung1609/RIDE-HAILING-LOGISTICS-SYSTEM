@@ -84,12 +84,13 @@ public class AuthController {
 
     private void setRefreshTokenCookie(HttpServletResponse response, String token, long maxAgeMs) {
         long maxAgeSeconds = maxAgeMs / 1000;
+        boolean isClearToken = (token == null || token.isEmpty());
         ResponseCookie cookie = ResponseCookie.from("refresh_token", token)
                 .httpOnly(true)
-                .secure(true)
+                .secure(false)
                 .path("/")
-                .maxAge(maxAgeSeconds)
-                .sameSite("None")
+                .maxAge(isClearToken ? 0 : maxAgeSeconds)
+                .sameSite("Lax")
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
