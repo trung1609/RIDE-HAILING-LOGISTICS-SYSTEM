@@ -86,10 +86,10 @@ public class AuthController {
         long maxAgeSeconds = maxAgeMs / 1000;
         ResponseCookie cookie = ResponseCookie.from("refresh_token", token)
                 .httpOnly(true)
-                .secure(false)
-                .path("/api/v1/auth")
+                .secure(true)
+                .path("/")
                 .maxAge(maxAgeSeconds)
-                .sameSite("Lax")
+                .sameSite("None")
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
