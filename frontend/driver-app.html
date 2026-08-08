@@ -380,8 +380,8 @@
             stompBookingClient = Stomp.over(bookSocket);
             stompBookingClient.connect({"userId": DRIVER_ID}, function () {
                 stompBookingClient.subscribe('/user/queue/driver/match', function (message) {
-                    if (isOnTrip) return;
                     let booking = JSON.parse(message.body);
+
                     if (booking.status === 'CANCELLED') {
                         document.getElementById('match-box').style.display = "none";
                         clearInterval(driverTimerInterval);
@@ -390,6 +390,9 @@
                         document.getElementById('log').innerHTML += `<li style="color:red; font-weight:bold;">🔄 Chuyến đi đã bị hủy bỏ/chuyển người.</li>`;
                         return;
                     }
+
+                    if (isOnTrip) return;
+
                     currentBookingId = booking.bookingId;
                     currentTripPrice = booking.price;
                     document.getElementById('box-title').innerText = "🔔 CÓ CUỐC XE MỚI!";
