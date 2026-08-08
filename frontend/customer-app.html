@@ -300,24 +300,15 @@
 
     function startCustomerTimer() {
         clearInterval(customerTimerInterval);
-        let timeLeft = 20;
-        let fallbackTimeout = 10;
         let timerEl = document.getElementById('customer-timer');
         timerEl.style.display = "inline";
-        timerEl.innerText = `(⏳ Tài xế phản hồi: ${timeLeft}s)`;
+        timerEl.innerText = `(⏳ Đang chờ tài xế...)`;
 
+        let dots = 0;
         customerTimerInterval = setInterval(() => {
-            if (timeLeft > 0) {
-                timeLeft--;
-                timerEl.innerText = `(⏳ Tài xế phản hồi: ${timeLeft}s)`;
-            } else if (fallbackTimeout > 0) {
-                fallbackTimeout--;
-                timerEl.innerText = `(🔄 Đang quét tìm tài xế khác... ${fallbackTimeout}s)`;
-            } else {
-                clearInterval(customerTimerInterval);
-                logSystem(currentBookingId, "TIMEOUT", "Hệ thống không phản hồi tìm xe. Tự động giải phóng cuốc.");
-                cancelCurrentTrip(true);
-            }
+            dots = (dots + 1) % 4;
+            let dotStr = ".".repeat(dots);
+            timerEl.innerText = `(🔄 Đang quét tìm tài xế phù hợp${dotStr})`;
         }, 1000);
     }
 

@@ -397,7 +397,10 @@
                     currentTripPrice = booking.price;
                     document.getElementById('box-title').innerText = "🔔 CÓ CUỐC XE MỚI!";
                     document.getElementById('match-info').innerHTML = `Khách ID: ${booking.customerId}<br>Thu nhập: <b>${Math.round(booking.price).toLocaleString('vi-VN')} VND</b>`;
-                    document.getElementById('action-buttons').innerHTML = `<button onclick="acceptRide()" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">NHẬN CUỐC</button>`;
+                    document.getElementById('action-buttons').innerHTML = `
+                        <button onclick="acceptRide()" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">NHẬN CUỐC</button>
+                        <button onclick="driverCancelRide(true)" style="background-color: #6c757d; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">BỎ QUA</button>
+                    `;
                     document.getElementById('match-box').style.display = "block";
                     startDriverTimer();
                 });
@@ -449,12 +452,7 @@
                 timerEl.innerText = `(⏳ Còn: ${timeLeft}s)`;
             } else {
                 clearInterval(driverTimerInterval);
-                document.getElementById('match-box').style.display = "none";
-                currentBookingId = null;
-                isOnTrip = false;
-                let logEl = document.getElementById('log');
-                logEl.innerHTML += `<li style="color:orange;">⏳ Đã hết thời gian phản hồi. Hệ thống tự động bỏ qua cuốc xe.</li>`;
-                logEl.scrollTop = logEl.scrollHeight;
+                driverCancelRide(true);
             }
         }, 1000);
     }
@@ -486,22 +484,29 @@
         callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/${endpointAction}`, successMsg, nextBtn, endpointAction);
     }
 
-    function driverCancelRide() {
-        if (!confirm("Bạn có chắc chắn muốn hủy bỏ cuốc xe này không?")) return;
+    function driverCancelRide(isAutoReject = false) {
+        if (!isAutoReject && !confirm("Bạn có chắc chắn muốn hủy/bỏ qua cuốc xe này không?")) return;
+
         fetchWithAuth(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/driver-cancel`, {
             method: 'PUT'
         }).then(async res => {
-            if (!res.ok) {
-                let err = await res.json().catch(() => ({}));
-                throw new Error(err.message || "Không thể hủy chuyến!");
+            document.getElementById('match-box').style.display = "none";
+            let oldId = currentBookingId;
+            currentBookingId = null;
+            isOnTrip = false;
+
+            if (isAutoReject) {
+                document.getElementById('log').innerHTML += `<li style="color:orange;">⏳ Đã hết thời gian 20s. Hệ thống đang chuyển cuốc #${oldId} cho tài xế khác.</li>`;
+            } else {
+                alert("Đã hủy chuyến đi thành công!");
+                document.getElementById('log').innerHTML += `<li style="color:red;">❌ Bạn đã từ chối/hủy cuốc xe #${oldId}.</li>`;
             }
-            return res.json();
-        }).then(data => {
-            alert("Đã hủy chuyến đi thành công!");
+            document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
+        }).catch(err => {
             document.getElementById('match-box').style.display = "none";
             currentBookingId = null;
             isOnTrip = false;
-        }).catch(err => alert("❌ THAO TÁC THẤT BẠI: " + err.message));
+        });
     }
 
     function callBookingApi(url, successMessage, nextButtonHtml, actionType) {

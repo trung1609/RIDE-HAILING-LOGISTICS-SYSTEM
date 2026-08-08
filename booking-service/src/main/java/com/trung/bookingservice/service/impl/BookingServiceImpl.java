@@ -314,6 +314,39 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chuyến đi."));
 
+        if (booking.getStatus() == BookingStatus.PENDING) {
+            String reservedDriverIdStr = redisTemplate.opsForValue().get("booking:driver:" + bookingId);
+            if (reservedDriverIdStr != null && reservedDriverIdStr.equals(driverId.toString())) {
+                log.info("Tài xế {} bỏ qua/từ chối cuốc xe PENDING #{}. Đang chuyển cho tài xế khác...", driverId, bookingId);
+
+                redisTemplate.delete("drivers:reserved:" + driverId);
+                redisTemplate.delete("booking:driver:" + bookingId);
+
+                // Đưa vào Blacklist 5 phút để luồng quét sau không gọi lại tài xế này nữa
+                String rejectedKey = "booking:rejected:" + bookingId;
+                redisTemplate.opsForSet().add(rejectedKey, driverId.toString());
+                redisTemplate.expire(rejectedKey, 5, TimeUnit.MINUTES);
+
+                double distance = LocationUtils.calculateDistance(
+                        booking.getStartLatitude(), booking.getStartLongitude(),
+                        booking.getEndLatitude(), booking.getEndLongitude()
+                );
+
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronizationAdapter() {
+                            @Override
+                            public void afterCommit() {
+                                bookingReassignService.reassignNewDriverAsync(bookingId, booking.getStartLongitude(), booking.getStartLatitude(), distance);
+                            }
+                        }
+                );
+
+                return convertToResponse(booking, distance);
+            } else {
+                throw new BadRequestException("Cuốc xe này đã được chuyển cho người khác hoặc đã hết hạn.");
+            }
+        }
+
         if (!driverId.equals(booking.getDriverId())) {
             throw new BadRequestException("Bạn không có quyền hủy chuyến đi này.");
         }
@@ -335,7 +368,7 @@ public class BookingServiceImpl implements BookingService {
 
         String rejectedKey = "booking:rejected:" + bookingId;
         redisTemplate.opsForSet().add(rejectedKey, driverId.toString());
-        redisTemplate.expire(rejectedKey, 30, TimeUnit.MINUTES);
+        redisTemplate.expire(rejectedKey, 5, TimeUnit.MINUTES);
 
         userDriverClient.updateDriverStatusInternal(driverId, DriverStatus.ONLINE);
         redisTemplate.delete("drivers:reserved:" + driverId);
