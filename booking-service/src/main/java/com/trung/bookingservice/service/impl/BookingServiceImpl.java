@@ -1,17 +1,17 @@
 package com.trung.bookingservice.service.impl;
 
+import com.trung.bookingservice.dto.request.BookingRequest;
 import com.trung.bookingservice.dto.request.PricingRequest;
+import com.trung.bookingservice.dto.response.BookingResponse;
+import com.trung.bookingservice.dto.response.DriverNearbyResponse;
 import com.trung.bookingservice.dto.response.PricingResponse;
+import com.trung.bookingservice.entity.Booking;
 import com.trung.bookingservice.event.BookingCompletedEvent;
 import com.trung.bookingservice.exception.BadRequestException;
 import com.trung.bookingservice.exception.ResourceNotFoundException;
+import com.trung.bookingservice.repository.BookingRepository;
 import com.trung.bookingservice.service.BookingService;
 import com.trung.bookingservice.service.client.LocationClient;
-import com.trung.bookingservice.dto.request.BookingRequest;
-import com.trung.bookingservice.dto.response.BookingResponse;
-import com.trung.bookingservice.dto.response.DriverNearbyResponse;
-import com.trung.bookingservice.entity.Booking;
-import com.trung.bookingservice.repository.BookingRepository;
 import com.trung.bookingservice.service.client.PricingClient;
 import com.trung.bookingservice.service.client.UserDriverClient;
 import com.trung.bookingservice.util.LocationUtils;
@@ -20,19 +20,15 @@ import com.trung.bookingservice.util.enums.DriverStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationAdapter;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -319,13 +315,13 @@ public class BookingServiceImpl implements BookingService {
         }
         if (booking.getStatus() == BookingStatus.PENDING) {
             String reservedDriverIdStr = redisTemplate.opsForValue().get("booking:driver:" + bookingId);
-            if (reservedDriverIdStr != null && reservedDriverIdStr.equals(driverId.toString())) {
-                log.info("Tài xế {} bỏ qua/từ chối cuốc xe PENDING #{}. Đang chuyển cho tài xế khác...", driverId, bookingId);
+
+            if (reservedDriverIdStr == null || reservedDriverIdStr.equals(driverId.toString())) {
+                log.info("Tài xế {} bỏ qua cuốc xe PENDING #{}. Đang luân chuyển cho tài xế khác...", driverId, bookingId);
 
                 redisTemplate.delete("drivers:reserved:" + driverId);
                 redisTemplate.delete("booking:driver:" + bookingId);
 
-                // Đưa vào Blacklist 5 phút để luồng quét sau không gọi lại tài xế này nữa
                 String rejectedKey = "booking:rejected:" + bookingId;
                 redisTemplate.opsForSet().add(rejectedKey, driverId.toString());
                 redisTemplate.expire(rejectedKey, 5, TimeUnit.MINUTES);
@@ -335,18 +331,22 @@ public class BookingServiceImpl implements BookingService {
                         booking.getEndLatitude(), booking.getEndLongitude()
                 );
 
+                BookingResponse driverCancelCommand = convertToResponse(booking, distance);
+                driverCancelCommand.setStatus(BookingStatus.CANCELLED);
+
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronizationAdapter() {
                             @Override
                             public void afterCommit() {
+                                messagingTemplate.convertAndSendToUser(driverId.toString(), "/queue/driver/match", driverCancelCommand);
+
                                 bookingReassignService.reassignNewDriverAsync(bookingId, booking.getStartLongitude(), booking.getStartLatitude(), distance);
                             }
                         }
                 );
-
                 return convertToResponse(booking, distance);
             } else {
-                throw new BadRequestException("Cuốc xe này đã được chuyển cho người khác hoặc đã hết hạn.");
+                throw new BadRequestException("Cuốc xe này đã được luân chuyển cho người khác.");
             }
         }
 
