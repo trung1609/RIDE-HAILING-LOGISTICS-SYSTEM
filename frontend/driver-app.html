@@ -620,15 +620,33 @@
         }
 
         fetch(`${API_BASE_URL}/api/v1/payments/driver/withdraw?amount=${amount}`, {
-            method: 'POST', headers: {'Authorization': 'Bearer ' + getStoredToken(), 'X-User-Id': DRIVER_ID}
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + getStoredToken(),
+                'X-User-Id': DRIVER_ID
+            }
         }).then(async res => {
             if (!res.ok) {
-                let errText = await res.text();
-                throw new Error(errText || "Rút tiền thất bại!");
+                let errData = {};
+                try {
+                    errData = await res.json();
+                } catch (e) {
+                }
+
+                if (errData && errData.message) {
+                    throw new Error(errData.message);
+                }
+                else if (res.status === 400) {
+                    throw new Error("Số dư trong ví không đủ hoặc số tiền không hợp lệ!");
+                }
+                else {
+                    throw new Error("Rút tiền thất bại, vui lòng thử lại sau!");
+                }
             }
+
             alert(`✅ Đã thực hiện lệnh rút thành công ${amount.toLocaleString('vi-VN')} đ về tài khoản ngân hàng của bạn!`);
             fetchWallet();
-        }).catch(err => alert("❌ THAO TÁC THẤT BẠI: " + err.message));
+        }).catch(err => alert("❌ THAO TÁC THẤT BẠI: \n" + err.message));
     }
 </script>
 </body>

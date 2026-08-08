@@ -88,4 +88,6 @@ jobs:
             
             docker compose up -d
             
+            docker compose restart frontend
+            
             docker image prune -f
