@@ -14,8 +14,7 @@ x-java-app: &java-app
 services:
   discovery-service:
     <<: *java-app
-    build:
-      context: ./discovery-service
+    image: ${DOCKER_USERNAME}/discovery-service:latest
     deploy:
       resources:
         limits:
@@ -34,8 +33,7 @@ services:
 
   api-gateway:
     <<: *java-app
-    build:
-      context: ./api-gateway
+    image: ${DOCKER_USERNAME}/api-gateway:latest
     ports:
       - "${API_GATEWAY_PORT}:8080"
     deploy:
@@ -56,8 +54,7 @@ services:
 
   user-driver-service:
     <<: *java-app
-    build:
-      context: ./user-driver-service
+    image: ${DOCKER_USERNAME}/user-driver-service:latest
     deploy:
       resources:
         limits:
@@ -72,7 +69,7 @@ services:
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       SPRING_DATA_REDIS_HOST: ${REDIS_HOST}
       SPRING_DATA_REDIS_PORT: ${REDIS_PORT}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
       MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
       JWT_SECRET: ${JWT_SECRET}
@@ -86,8 +83,7 @@ services:
 
   location-service:
     <<: *java-app
-    build:
-      context: ./location-service
+    image: ${DOCKER_USERNAME}/location-service:latest
     deploy:
       resources:
         limits:
@@ -108,8 +104,7 @@ services:
 
   booking-service:
     <<: *java-app
-    build:
-      context: ./booking-service
+    image: ${DOCKER_USERNAME}/booking-service:latest
     deploy:
       resources:
         limits:
@@ -125,7 +120,7 @@ services:
       SPRING_DATA_REDIS_HOST: ${REDIS_HOST}
       SPRING_DATA_REDIS_PORT: ${REDIS_PORT}
       SPRING_DATA_REDIS_DATABASE: ${BOOKING_REDIS_DB}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
       MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
     depends_on:
@@ -137,8 +132,7 @@ services:
 
   pricing-service:
     <<: *java-app
-    build:
-      context: ./pricing-service
+    image: ${DOCKER_USERNAME}/pricing-service:latest
     deploy:
       resources:
         limits:
@@ -159,8 +153,7 @@ services:
 
   payment-service:
     <<: *java-app
-    build:
-      context: ./payment-service
+    image: ${DOCKER_USERNAME}/payment-service:latest
     deploy:
       resources:
         limits:
@@ -173,7 +166,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
       MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
       MOMO_PARTNER_CODE_PROD: ${MOMO_PARTNER_CODE_PROD}
