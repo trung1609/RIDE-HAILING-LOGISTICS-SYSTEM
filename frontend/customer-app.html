@@ -193,11 +193,55 @@
         iconAnchor: [15, 7]
     });
 
-    // --- BỔ SUNG LOGIC XỬ LÝ TOKEN ---
+    async function doRefreshToken() {
+        try {
+            let res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + getStoredToken()
+                },
+                credentials: 'include'
+            });
+
+            if (!res.ok) return false;
+
+            let data = await res.json();
+            if (data.success && data.data.accessToken) {
+                localStorage.setItem('accessToken', data.data.accessToken);
+                return true;
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function fetchWithAuth(url, options = {}) {
+        if (!options.headers) options.headers = {};
+        options.headers['Authorization'] = 'Bearer ' + getStoredToken();
+        options.credentials = 'include';
+
+        let response = await fetch(url, options);
+
+        if (response.status === 401) {
+            console.warn("Access Token hết hạn! Đang tiến hành refresh ngầm...");
+            const isRefreshed = await doRefreshToken();
+
+            if (isRefreshed) {
+                options.headers['Authorization'] = 'Bearer ' + getStoredToken();
+                response = await fetch(url, options);
+            } else {
+                doActualLogout(getStoredToken());
+                throw new Error("Phiên đăng nhập đã hết hạn hoàn toàn. Vui lòng đăng nhập lại!");
+            }
+        }
+        return response;
+    }
+
     function getStoredToken() {
         const token = localStorage.getItem('accessToken');
         if (!token) {
-            window.location.href = 'index.html'; // ⚡ Bị đá ra index nếu ko có token
+            window.location.href = 'index.html';
             return null;
         }
         return token;
@@ -215,9 +259,14 @@
     function logout() {
         const token = getStoredToken();
         if (!token) return;
+        doActualLogout(token);
+    }
+
+    function doActualLogout(token) {
         fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
             method: 'POST',
-            headers: {'Authorization': 'Bearer ' + token}
+            headers: {'Authorization': 'Bearer ' + token},
+            credentials: 'include'
         }).finally(() => {
             localStorage.removeItem('accessToken');
             window.location.href = 'index.html';
@@ -230,11 +279,10 @@
 
         let decoded = parseJwt(t);
         if (decoded) {
-            customerId = decoded.userId || decoded.id; // Lấy ID
+            customerId = decoded.userId || decoded.id;
             document.getElementById('display-user').innerText = decoded.sub + ' (ID: ' + customerId + ')';
         }
 
-        // Init Map
         map = L.map('map').setView([21.0415, 105.8388], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: '&copy; OpenStreetMap'}).addTo(map);
         L.marker(startPoint).addTo(map).bindPopup("<b>Điểm đón</b>").openPopup();
@@ -247,11 +295,9 @@
         L.marker(endPoint, {icon: redIcon}).addTo(map).bindPopup("<b>Điểm đến</b>");
         L.polyline([startPoint, endPoint], {color: '#007bff', weight: 4, dashArray: '10, 10'}).addTo(map);
 
-        // Tự động kết nối WebSockets
         connectNotification();
     };
 
-    // --- CÁC HÀM LOGIC ĐÃ ĐƯỢC CẬP NHẬT ĐỂ DÙNG getStoredToken() ---
     function startCustomerTimer() {
         clearInterval(customerTimerInterval);
         let timeLeft = 20;
@@ -280,14 +326,8 @@
         if (!cleanToken) return;
         let url = `${API_BASE_URL}/api/v1/locations/nearby?longitude=${startPoint[1]}&latitude=${startPoint[0]}&radius=5.0`;
 
-        fetch(url, {method: 'GET', headers: {'Authorization': 'Bearer ' + cleanToken}})
+        fetchWithAuth(url, {method: 'GET'})
             .then(async res => {
-                if (res.status === 401) {
-                    cleanupSystem();
-                    alert("Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!");
-                    logout();
-                    throw new Error("Unauthorized");
-                }
                 if (!res.ok) throw new Error("HTTP Status: " + res.status);
                 let responseText = await res.text();
                 return responseText ? JSON.parse(responseText) : [];
@@ -485,9 +525,9 @@
             "endLatitude": endPoint[0]
         };
 
-        fetch(`${API_BASE_URL}/api/v1/bookings`, {
+        fetchWithAuth(`${API_BASE_URL}/api/v1/bookings`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cleanToken},
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         }).then(async res => {
             if (!res.ok) {
@@ -527,9 +567,9 @@
         if (!cleanToken) return;
         isClientCanceling = true;
 
-        fetch(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/cancel`, {
+        fetchWithAuth(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/cancel`, {
             method: 'PUT',
-            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': customerId.toString()}
+            headers: {'X-User-Id': customerId.toString()}
         }).then(async res => {
             if (!res.ok) throw new Error("Không thể hủy!");
             return res.json();
@@ -562,8 +602,8 @@
         let cleanToken = getStoredToken();
         if (!cleanToken) return;
 
-        fetch(`${API_BASE_URL}/api/v1/payments/payment/create?method=${method}&type=TRIP&bookingId=${currentBookingId}&driverId=${assignedDriverId}&amount=${currentTripPrice}`, {
-            method: 'POST', headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': customerId.toString()}
+        fetchWithAuth(`${API_BASE_URL}/api/v1/payments/payment/create?method=${method}&type=TRIP&bookingId=${currentBookingId}&driverId=${assignedDriverId}&amount=${currentTripPrice}`, {
+            method: 'POST', headers: {'X-User-Id': customerId.toString()}
         }).then(async res => {
             if (!res.ok) throw new Error("Lỗi gọi cổng thanh toán");
             return res.json();
@@ -590,9 +630,9 @@
                     hasInitiatedPayment = false;
                     paidBadge.remove();
                     cancelPayBtn.remove();
-                    let cleanToken = getStoredToken();
-                    fetch(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/cancel-pending`, {
-                        method: 'PUT', headers: {'Authorization': 'Bearer ' + cleanToken}
+
+                    fetchWithAuth(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/cancel-pending`, {
+                        method: 'PUT'
                     }).catch(err => console.warn("Lỗi hủy PENDING:", err));
 
                     document.getElementById('btnPayMomo').style.display = "inline-block";
@@ -608,7 +648,7 @@
 
                 clearInterval(paymentCheckInterval);
                 paymentCheckInterval = setInterval(() => {
-                    fetch(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/payment-status`, {headers: {'Authorization': 'Bearer ' + cleanToken}})
+                    fetchWithAuth(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/payment-status`)
                         .then(res => res.text())
                         .then(status => {
                             if (status === 'SUCCESS') {

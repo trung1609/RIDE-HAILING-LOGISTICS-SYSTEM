@@ -150,11 +150,55 @@
     let isOnTrip = false;
     let currentTripPrice = 0;
 
-    // --- LOGIC XỬ LÝ TOKEN MỚI ---
+    async function doRefreshToken() {
+        try {
+            let res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + getStoredToken()
+                },
+                credentials: 'include'
+            });
+
+            if (!res.ok) return false;
+
+            let data = await res.json();
+            if (data.success && data.data.accessToken) {
+                localStorage.setItem('accessToken', data.data.accessToken);
+                return true;
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function fetchWithAuth(url, options = {}) {
+        if (!options.headers) options.headers = {};
+        options.headers['Authorization'] = 'Bearer ' + getStoredToken();
+        options.credentials = 'include';
+
+        let response = await fetch(url, options);
+
+        if (response.status === 401) {
+            console.warn("Access Token hết hạn! Đang tiến hành refresh ngầm...");
+            const isRefreshed = await doRefreshToken();
+
+            if (isRefreshed) {
+                options.headers['Authorization'] = 'Bearer ' + getStoredToken();
+                response = await fetch(url, options);
+            } else {
+                doActualLogout(getStoredToken());
+                throw new Error("Phiên đăng nhập đã hết hạn hoàn toàn. Vui lòng đăng nhập lại!");
+            }
+        }
+        return response;
+    }
+
     function getStoredToken() {
         const token = localStorage.getItem('accessToken');
         if (!token) {
-            window.location.href = 'index.html'; // ⚡ Bị đá ra index nếu ko có token
+            window.location.href = 'index.html';
             return null;
         }
         return token;
@@ -176,10 +220,9 @@
             return;
         }
 
-        // Cố gắng gửi lệnh OFFLINE trước khi đăng xuất
         if (DRIVER_ID) {
-            fetch(`${API_BASE_URL}/api/v1/drivers/${DRIVER_ID}/status?isActive=false`, {
-                method: 'PUT', headers: {'Authorization': 'Bearer ' + token, 'X-User-Id': DRIVER_ID}
+            fetchWithAuth(`${API_BASE_URL}/api/v1/drivers/${DRIVER_ID}/status?isActive=false`, {
+                method: 'PUT', headers: {'X-User-Id': DRIVER_ID}
             }).finally(() => {
                 doActualLogout(token);
             });
@@ -190,7 +233,9 @@
 
     function doActualLogout(token) {
         fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
-            method: 'POST', headers: {'Authorization': 'Bearer ' + token}
+            method: 'POST',
+            headers: {'Authorization': 'Bearer ' + token},
+            credentials: 'include'
         }).finally(() => {
             localStorage.removeItem('accessToken');
             window.location.href = 'index.html';
@@ -241,7 +286,6 @@
         return (Math.atan2(y, x) * (180 / Math.PI) + 90 + 360) % 360;
     }
 
-    // --- THAY ĐỔI connect() để KHÔNG CẦN NHẬP TAY NỮA ---
     function connect() {
         let cleanToken = getStoredToken();
         if (!cleanToken || !DRIVER_ID) {
@@ -251,8 +295,8 @@
 
         document.getElementById('wallet-section').style.display = "block";
 
-        fetch(`${API_BASE_URL}/api/v1/payments/wallet`, {
-            headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
+        fetchWithAuth(`${API_BASE_URL}/api/v1/payments/wallet`, {
+            headers: {'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
         }).then(res => res.json()).then(data => {
             let balance = data.balance || 0;
             document.getElementById('wallet-balance').innerText = balance.toLocaleString('vi-VN');
@@ -270,8 +314,8 @@
         if (stompLocationClient) stompLocationClient.disconnect();
         if (stompBookingClient) stompBookingClient.disconnect();
 
-        fetch(`${API_BASE_URL}/api/v1/drivers/${DRIVER_ID}/status?isActive=true`, {
-            method: 'PUT', headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID}
+        fetchWithAuth(`${API_BASE_URL}/api/v1/drivers/${DRIVER_ID}/status?isActive=true`, {
+            method: 'PUT', headers: {'X-User-Id': DRIVER_ID}
         }).then(async res => {
             if (!res.ok) throw new Error("Lỗi hệ thống, không thể bật app!");
             initMap();
@@ -374,8 +418,8 @@
         let cleanToken = getStoredToken();
         if (!cleanToken) return;
 
-        fetch(`${API_BASE_URL}/api/v1/drivers/${DRIVER_ID}/status?isActive=false`, {
-            method: 'PUT', headers: {'Authorization': 'Bearer ' + cleanToken, 'X-User-Id': DRIVER_ID}
+        fetchWithAuth(`${API_BASE_URL}/api/v1/drivers/${DRIVER_ID}/status?isActive=false`, {
+            method: 'PUT', headers: {'X-User-Id': DRIVER_ID}
         }).then(async res => {
             if (!res.ok) throw new Error("Lỗi khi tắt app!");
             if (stompLocationClient) stompLocationClient.disconnect();
@@ -418,9 +462,9 @@
 
         let nextButtons = `
             <button onclick="updateTripStatus('arrived', 'Đã đến điểm đón!', 'start')" style="background-color: #ffc107; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">ĐÃ ĐẾN ĐIỂM ĐÓN</button>
-            <button onclick="driverCancelRide('${cleanToken}')" style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">HỦY CUỐC XE</button>
+            <button onclick="driverCancelRide()" style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">HỦY CUỐC XE</button>
         `;
-        callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/accept`, cleanToken, "Đã nhận cuốc!", nextButtons, 'accept');
+        callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/accept`, "Đã nhận cuốc!", nextButtons, 'accept');
     }
 
     function updateTripStatus(endpointAction, successMsg, nextActionKey) {
@@ -431,18 +475,18 @@
         if (nextActionKey === 'start') {
             nextBtn = `
                 <button onclick="updateTripStatus('start', 'Hành trình đang diễn ra...', 'complete')" style="background-color: #007bff; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">BẮT ĐẦU HÀNH TRÌNH</button>
-                <button onclick="driverCancelRide('${cleanToken}')" style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">HỦY CUỐC XE</button>
+                <button onclick="driverCancelRide()" style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">HỦY CUỐC XE</button>
             `;
         } else if (nextActionKey === 'complete') {
             nextBtn = `<button onclick="updateTripStatus('complete', 'Chuyến đi kết thúc!', '')" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">HOÀN THÀNH CHUYẾN ĐI</button>`;
         }
-        callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/${endpointAction}`, cleanToken, successMsg, nextBtn, endpointAction);
+        callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/${endpointAction}`, successMsg, nextBtn, endpointAction);
     }
 
-    function driverCancelRide(token) {
+    function driverCancelRide() {
         if (!confirm("Bạn có chắc chắn muốn hủy bỏ cuốc xe này không?")) return;
-        fetch(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/driver-cancel`, {
-            method: 'PUT', headers: {'Authorization': 'Bearer ' + token}
+        fetchWithAuth(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/driver-cancel`, {
+            method: 'PUT'
         }).then(async res => {
             if (!res.ok) {
                 let err = await res.json().catch(() => ({}));
@@ -457,8 +501,8 @@
         }).catch(err => alert("❌ THAO TÁC THẤT BẠI: " + err.message));
     }
 
-    function callBookingApi(url, token, successMessage, nextButtonHtml, actionType) {
-        fetch(url, {method: 'PUT', headers: {'Authorization': 'Bearer ' + token}})
+    function callBookingApi(url, successMessage, nextButtonHtml, actionType) {
+        fetchWithAuth(url, {method: 'PUT'})
             .then(async res => {
                 if (!res.ok) {
                     let errorData = await res.json().catch(() => ({}));
@@ -503,8 +547,8 @@
 
     function fetchWalletWithCallback(callback) {
         if (!DRIVER_ID) return;
-        fetch(`${API_BASE_URL}/api/v1/payments/wallet`, {
-            headers: {'Authorization': 'Bearer ' + getStoredToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
+        fetchWithAuth(`${API_BASE_URL}/api/v1/payments/wallet`, {
+            headers: {'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
         }).then(res => res.json()).then(data => {
             let balance = data.balance || 0;
             document.getElementById('wallet-balance').innerText = balance.toLocaleString('vi-VN');
@@ -531,8 +575,8 @@
             return;
         }
 
-        fetch(`${API_BASE_URL}/api/v1/payments/payment/create?method=${method.toUpperCase()}&type=DEPOSIT&amount=${amount}`, {
-            method: 'POST', headers: {'Authorization': 'Bearer ' + getStoredToken(), 'X-User-Id': DRIVER_ID}
+        fetchWithAuth(`${API_BASE_URL}/api/v1/payments/payment/create?method=${method.toUpperCase()}&type=DEPOSIT&amount=${amount}`, {
+            method: 'POST', headers: {'X-User-Id': DRIVER_ID}
         }).then(res => res.json()).then(data => {
             if (data.paymentUrl) {
                 window.open(data.paymentUrl, '_blank');
@@ -563,8 +607,8 @@
             return;
         }
 
-        fetch(`${API_BASE_URL}/api/v1/payments/transactions`, {
-            headers: {'Authorization': 'Bearer ' + getStoredToken(), 'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
+        fetchWithAuth(`${API_BASE_URL}/api/v1/payments/transactions`, {
+            headers: {'X-User-Id': DRIVER_ID, 'X-User-Role': 'DRIVER'}
         })
             .then(async res => {
                 if (!res.ok) {
@@ -619,10 +663,9 @@
             return;
         }
 
-        fetch(`${API_BASE_URL}/api/v1/payments/driver/withdraw?amount=${amount}`, {
+        fetchWithAuth(`${API_BASE_URL}/api/v1/payments/driver/withdraw?amount=${amount}`, {
             method: 'POST',
             headers: {
-                'Authorization': 'Bearer ' + getStoredToken(),
                 'X-User-Id': DRIVER_ID
             }
         }).then(async res => {
@@ -635,11 +678,9 @@
 
                 if (errData && errData.message) {
                     throw new Error(errData.message);
-                }
-                else if (res.status === 400) {
+                } else if (res.status === 400) {
                     throw new Error("Số dư trong ví không đủ hoặc số tiền không hợp lệ!");
-                }
-                else {
+                } else {
                     throw new Error("Rút tiền thất bại, vui lòng thử lại sau!");
                 }
             }
