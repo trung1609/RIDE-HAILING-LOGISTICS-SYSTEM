@@ -23,7 +23,7 @@ public class PaymentScheduler {
 //    @Scheduled(cron = "*/5 * * * * *")
     @Transactional
     public void cleanExpiredPendingTransactions() {
-        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(5);
+        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(15);
 //        LocalDateTime cutoffTime = LocalDateTime.now().minusSeconds(20);
         List<Transaction> expiredTxs = transactionRepository.findByStatusAndCreatedAtBefore(
                 TransactionStatus.PENDING, cutoffTime
