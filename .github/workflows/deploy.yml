@@ -82,12 +82,10 @@ jobs:
           script: |
             cd /home/trung/RIDE-HAILING-LOGISTICS-SYSTEM
             
-            docker compose down
-            
-            docker rmi $(docker images 'vmt1609/*' -q) -f || true
-            
-            docker image prune -af
+            git pull origin main
             
             docker compose pull
             
-            docker compose up -d --force-recreate
+            docker compose up -d
+            
+            docker image prune -f
