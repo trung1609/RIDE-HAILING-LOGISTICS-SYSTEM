@@ -19,18 +19,18 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Cấp quyền thực thi cho TẤT CẢ gradlew
+        run: find . -name "gradlew" -exec chmod +x {} \;
+
       - name: Build file .jar từng service con
         run: |
-          cd discovery-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
-          cd api-gateway && ./gradlew clean bootJar -x test --no-daemon && cd ..
-          cd user-driver-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
-          cd payment-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
-          cd booking-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
-          cd pricing-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
-          cd location-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
-
-      - name: Build file .jar (Bỏ qua test)
-        run: ./gradlew clean bootJar -x test --no-daemon
+          (cd discovery-service && ./gradlew clean bootJar -x test --no-daemon)
+          (cd api-gateway && ./gradlew clean bootJar -x test --no-daemon)
+          (cd user-driver-service && ./gradlew clean bootJar -x test --no-daemon)
+          (cd payment-service && ./gradlew clean bootJar -x test --no-daemon)
+          (cd booking-service && ./gradlew clean bootJar -x test --no-daemon)
+          (cd pricing-service && ./gradlew clean bootJar -x test --no-daemon)
+          (cd location-service && ./gradlew clean bootJar -x test --no-daemon)
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2
