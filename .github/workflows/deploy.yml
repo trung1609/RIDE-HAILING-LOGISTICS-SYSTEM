@@ -19,8 +19,15 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Cấp quyền thực thi cho gradlew
-        run: chmod +x gradlew
+      - name: Build file .jar từng service con
+        run: |
+          cd discovery-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
+          cd api-gateway && ./gradlew clean bootJar -x test --no-daemon && cd ..
+          cd user-driver-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
+          cd payment-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
+          cd booking-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
+          cd pricing-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
+          cd location-service && ./gradlew clean bootJar -x test --no-daemon && cd ..
 
       - name: Build file .jar (Bỏ qua test)
         run: ./gradlew clean bootJar -x test --no-daemon
