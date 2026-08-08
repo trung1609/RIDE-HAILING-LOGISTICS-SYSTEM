@@ -82,10 +82,12 @@ jobs:
           script: |
             cd /home/trung/RIDE-HAILING-LOGISTICS-SYSTEM
             
-            export DOCKER_USERNAME=vmt1609
+            docker compose down
+            
+            docker rmi $(docker images 'vmt1609/*' -q) -f || true
+            
+            docker image prune -af
             
             docker compose pull
             
             docker compose up -d --force-recreate
-            
-            docker image prune -f
