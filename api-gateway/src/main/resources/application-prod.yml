@@ -2,6 +2,10 @@ server:
   port: ${API_GATEWAY_PORT}
 
 spring:
+  data:
+    redis:
+      port: ${REDIS_PORT}
+      host: ${REDIS_HOST}
   cloud:
     gateway:
       server:
