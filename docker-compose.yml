@@ -14,7 +14,7 @@ x-java-app: &java-app
 services:
   discovery-service:
     <<: *java-app
-    image: ${DOCKER_USERNAME}/discovery-service:latest
+    image: vmt1609/discovery-service:latest
     deploy:
       resources:
         limits:
@@ -33,7 +33,7 @@ services:
 
   api-gateway:
     <<: *java-app
-    image: ${DOCKER_USERNAME}/api-gateway:latest
+    image: vmt1609/api-gateway:latest
     ports:
       - "${API_GATEWAY_PORT}:8080"
     deploy:
@@ -56,7 +56,7 @@ services:
 
   user-driver-service:
     <<: *java-app
-    image: ${DOCKER_USERNAME}/user-driver-service:latest
+    image: vmt1609/user-driver-service:latest
     deploy:
       resources:
         limits:
@@ -85,7 +85,7 @@ services:
 
   location-service:
     <<: *java-app
-    image: ${DOCKER_USERNAME}/location-service:latest
+    image: vmt1609/location-service:latest
     deploy:
       resources:
         limits:
@@ -106,7 +106,7 @@ services:
 
   booking-service:
     <<: *java-app
-    image: ${DOCKER_USERNAME}/booking-service:latest
+    image: vmt1609/booking-service:latest
     deploy:
       resources:
         limits:
@@ -134,7 +134,7 @@ services:
 
   pricing-service:
     <<: *java-app
-    image: ${DOCKER_USERNAME}/pricing-service:latest
+    image: vmt1609/pricing-service:latest
     deploy:
       resources:
         limits:
@@ -155,7 +155,7 @@ services:
 
   payment-service:
     <<: *java-app
-    image: ${DOCKER_USERNAME}/payment-service:latest
+    image: vmt1609/payment-service:latest
     deploy:
       resources:
         limits:
