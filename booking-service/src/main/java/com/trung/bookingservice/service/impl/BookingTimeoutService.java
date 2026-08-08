@@ -7,6 +7,7 @@ import com.trung.bookingservice.util.LocationUtils;
 import com.trung.bookingservice.util.enums.BookingStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -25,8 +26,9 @@ public class BookingTimeoutService {
     private final SimpMessagingTemplate messagingTemplate;
     private final StringRedisTemplate redisTemplate;
 
+    @Autowired
     @Lazy
-    private final BookingReassignService bookingReassignService;
+    private BookingReassignService bookingReassignService;
 
     @Async
     @Transactional

@@ -9,6 +9,8 @@ import com.trung.bookingservice.service.client.UserDriverClient;
 import com.trung.bookingservice.util.enums.BookingStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -28,8 +30,11 @@ public class BookingReassignService {
     private final StringRedisTemplate redisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
     private final BookingRepository bookingRepository;
-    private final BookingTimeoutService bookingTimeoutService;
     private final UserDriverClient userDriverClient;
+
+    @Autowired
+    @Lazy
+    private BookingTimeoutService bookingTimeoutService;
 
     @Async("taskExecutor")
     @Transactional
