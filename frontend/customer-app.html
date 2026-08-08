@@ -429,12 +429,20 @@
             stompClient.subscribe('/user/queue/booking/status', function (message) {
                 let bookingInfo = JSON.parse(message.body);
 
-                if (bookingInfo.status === 'PENDING') {
+                if (bookingInfo.status === 'PENDING' || bookingInfo.status === 'ACCEPTED') {
                     document.getElementById('btnCancelTrip').style.display = "inline-block";
+                } else {
+                    document.getElementById('btnCancelTrip').style.display = "none";
+                }
+
+                if (bookingInfo.status === 'PENDING') {
                     document.getElementById('btnPayMomo').style.display = "none";
+                    document.getElementById('btnPayVnpay').style.display = "none";
+
                     hasInitiatedPayment = false;
                     let oldBadge = document.getElementById('paid-badge');
                     if (oldBadge) oldBadge.remove();
+
                     startRadar();
                     startCustomerTimer();
 
@@ -445,7 +453,6 @@
                     activeDriverId = null;
                     if (bookingInfo.price) updateSurgeBadgeByPrice(bookingInfo.price);
                 } else {
-                    document.getElementById('btnCancelTrip').style.display = "none";
                     clearInterval(customerTimerInterval);
                     document.getElementById('customer-timer').style.display = "none";
                     stopRadar();
@@ -475,6 +482,7 @@
                     currentBookingId = null;
                     document.getElementById('trip-card').style.display = "none";
                     document.getElementById('btnPayMomo').style.display = "none";
+                    document.getElementById('btnPayVnpay').style.display = "none";
                     stopRadar();
                     document.getElementById('surge-badge').innerText = "Trở về bình thường";
                     document.getElementById('surge-badge').style.color = "blue";

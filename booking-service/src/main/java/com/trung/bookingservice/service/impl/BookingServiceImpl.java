@@ -206,8 +206,17 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException("Bạn không có quyền thao tác trên chuyến đi này.");
         }
 
-        if (booking.getStatus() != BookingStatus.PENDING) {
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.ACCEPTED) {
             throw new BadRequestException("Không thể hủy chuyến đi này. Trạng thái hiện tại: " + booking.getStatus());
+        }
+
+        if (booking.getStatus() == BookingStatus.ACCEPTED && booking.getDriverId() != null) {
+            try {
+                userDriverClient.updateDriverStatusInternal(booking.getDriverId(), DriverStatus.ONLINE);
+                log.info("Giải phóng tài xế ID {} về ONLINE do khách hàng hủy chuyến khi đang ACCEPTED", booking.getDriverId());
+            } catch (Exception e) {
+                log.error("Không thể cập nhật trạng thái cho tài xế {} khi khách hủy chuyến: {}", booking.getDriverId(), e.getMessage());
+            }
         }
 
         booking.setStatus(BookingStatus.CANCELLED);
@@ -215,7 +224,6 @@ public class BookingServiceImpl implements BookingService {
 
         log.info("Khách hàng {} đã chủ động hủy chuyến đi #{}", customerId, bookingId);
 
-        // Tra cứu driver đang được giữ chỗ qua Redis reverse key, không gọi Feign
         String reservedDriverIdStr = redisTemplate.opsForValue().get("booking:driver:" + bookingId);
         if (reservedDriverIdStr != null) {
             Long invitedDriverId = Long.parseLong(reservedDriverIdStr);
@@ -226,6 +234,15 @@ public class BookingServiceImpl implements BookingService {
             BookingResponse cancelResponse = convertToResponse(booking, 0.0);
             messagingTemplate.convertAndSendToUser(
                     invitedDriverId.toString(),
+                    "/queue/driver/match",
+                    cancelResponse
+            );
+        }
+
+        if (booking.getDriverId() != null) {
+            BookingResponse cancelResponse = convertToResponse(booking, 0.0);
+            messagingTemplate.convertAndSendToUser(
+                    booking.getDriverId().toString(),
                     "/queue/driver/match",
                     cancelResponse
             );
