@@ -95,11 +95,12 @@
 
 <div style="margin-bottom: 15px;">
     <button id="btnConnect" onclick="connect()"
-            style="padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">
+            style="padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold; display: inline-block;">
         Bật App (Đi làm)
     </button>
-    <button id="btnDisconnect" onclick="disconnect()" disabled
-            style="padding: 10px; border-radius: 4px; font-weight:bold;">Tắt App (Nghỉ ngơi)
+    <button id="btnDisconnect" onclick="disconnect()"
+            style="padding: 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold; display: none;">
+        Tắt App (Nghỉ ngơi)
     </button>
 </div>
 
@@ -326,8 +327,8 @@
             stompLocationClient.connect({"driverId": DRIVER_ID}, function () {
                 document.getElementById('status').innerText = `Trạng thái: ONLINE (Đang hoạt động - ID: ${DRIVER_ID})`;
                 document.getElementById('status').style.color = "green";
-                document.getElementById('btnConnect').disabled = true;
-                document.getElementById('btnDisconnect').disabled = false;
+                document.getElementById('btnConnect').style.display = "none";
+                document.getElementById('btnDisconnect').style.display = "inline-block";
 
                 const routeWaypoints = [
                     {lat: 21.0230, lng: 105.7600, desc: "A. ~10km"}, {lat: 21.0240, lng: 105.7800, desc: "B. ~8km"},
@@ -412,8 +413,8 @@
         if (locationInterval) clearInterval(locationInterval);
         document.getElementById('status').innerText = "Trạng thái: OFFLINE (Đã tắt app)";
         document.getElementById('status').style.color = "red";
-        document.getElementById('btnConnect').disabled = false;
-        document.getElementById('btnDisconnect').disabled = true;
+        document.getElementById('btnConnect').style.display = "inline-block";
+        document.getElementById('btnDisconnect').style.display = "none";
         document.getElementById('match-box').style.display = "none";
         clearInterval(driverTimerInterval);
         clearInterval(depositCheckInterval);
