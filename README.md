@@ -2,6 +2,11 @@
 
 Dự án này là hệ thống ride-hailing theo kiến trúc microservices, dùng Java Spring Boot, Redis, PostgreSQL, Kafka, WebSocket và Docker Compose để hỗ trợ đầy đủ quy trình đặt xe, nhận cuốc, định giá, thanh toán và giám sát vận hành.
 
+## Demo
+- Deploy trên server staging: https://ridehailingsystem.online
+- Demo khách hàng: https://ridehailingsystem.online/customer-app.html (sử dụng số điện thoại 0987658652 và mật khẩu 123456 để đăng nhập)
+- Demo tài xế: https://ridehailingsystem.online/driver-app.html (sủ dụng số điện thoại 0999999999 và mật khẩu 123456 để đăng nhập)
+
 ## Kiến trúc tổng quát
 - API Gateway: điểm vào chung cho toàn bộ hệ thống, xác thực JWT, chuyển header và kiểm soát truy cập.
 - Discovery Service: đăng ký và tìm service bằng Eureka.

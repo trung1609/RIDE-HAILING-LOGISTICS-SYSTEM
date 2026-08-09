@@ -6,6 +6,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 
 @Repository
@@ -32,6 +33,15 @@ public class PricingConfigRepository {
                 .pricePerKm(Double.parseDouble(entries.get("pricePerKm").toString()))
                 .pricePerMinute(Double.parseDouble(entries.get("pricePerMinute").toString()))
                 .build();
+    }
+
+    public void updatePricingConfig(PricingConfig config) {
+        Map<String, String> map = new HashMap<>();
+        map.put("baseFare", String.valueOf(config.getBaseFare()));
+        map.put("pricePerKm", String.valueOf(config.getPricePerKm()));
+        map.put("pricePerMinute", String.valueOf(config.getPricePerMinute()));
+
+        redisTemplate.opsForHash().putAll(REDIS_KEY, map);
     }
 
     public void updateDemand(String h3Index) {

@@ -1,5 +1,6 @@
 package com.trung.pricingservice.service.impl;
 
+import com.trung.pricingservice.dto.request.PricingConfigRequest;
 import com.trung.pricingservice.dto.request.PricingRequest;
 import com.trung.pricingservice.dto.response.PricingResponse;
 import com.trung.pricingservice.entity.PricingConfig;
@@ -59,6 +60,24 @@ public class PricingServiceImpl implements PricingService {
         return pricingMapper.toPricingResponse(
                 baseConfig, distanceFare, durationFare, surgeLevel, finalPrice, distance, estimatedDuration, h3Index
         );
+    }
+
+    @Override
+    public PricingConfig updateBasePricingConfig(PricingConfigRequest request) {
+        PricingConfig newConfig = PricingConfig.builder()
+                .baseFare(request.getBaseFare())
+                .pricePerKm(request.getPricePerKm())
+                .pricePerMinute(request.getPricePerMinute())
+                .build();
+
+        configRepository.updatePricingConfig(newConfig);
+        log.info("Đã cập nhật cấu hình bảng giá mới vào Redis: {}", newConfig);
+        return newConfig;
+    }
+
+    @Override
+    public PricingConfig getBasePricingConfig() {
+        return configRepository.getBasePricingConfig();
     }
 
     private SurgeLevel determineSurgeLevel(int demand, int supply) {
