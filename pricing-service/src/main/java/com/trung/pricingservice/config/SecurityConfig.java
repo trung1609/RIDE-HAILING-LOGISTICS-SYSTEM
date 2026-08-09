@@ -25,7 +25,7 @@ public class SecurityConfig {
                 .cors(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/pricing/**").permitAll()
-                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/pricing/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(headerAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
