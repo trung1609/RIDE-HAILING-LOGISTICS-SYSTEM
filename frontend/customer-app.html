@@ -136,13 +136,19 @@
 
 <div id="status" style="margin-top: 15px; font-weight: bold; color: gray;">Trạng thái: Chưa kết nối</div>
 
-<div id="history-panel" style="display: none; margin-top: 15px; background: #fff; border: 2px solid #17a2b8; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<div id="history-panel"
+     style="display: none; margin-top: 15px; background: #fff; border: 2px solid #17a2b8; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
     <h3 style="color: #17a2b8; margin-top: 0; display: flex; justify-content: space-between;">
         <span>📜 LỊCH SỬ CHUYẾN ĐI CỦA BẠN</span>
-        <button onclick="toggleBookingHistory()" style="background: none; border: none; font-size: 16px; cursor: pointer; color: red;">❌ Đóng</button>
+        <button onclick="toggleBookingHistory()"
+                style="background: none; border: none; font-size: 16px; cursor: pointer; color: red;">❌ Đóng
+        </button>
     </h3>
-    <button onclick="fetchBookingHistory()" style="margin-bottom: 10px; cursor:pointer; padding: 5px 10px;">🔄 Làm mới dữ liệu</button>
-    <ul id="booking-history-list" style="list-style-type: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto;">
+    <button onclick="fetchBookingHistory()" style="margin-bottom: 10px; cursor:pointer; padding: 5px 10px;">🔄 Làm mới dữ
+        liệu
+    </button>
+    <ul id="booking-history-list"
+        style="list-style-type: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto;">
     </ul>
 </div>
 
@@ -421,7 +427,10 @@
         let socket = new SockJS(`${WS_BASE_URL}/ws-booking`);
         stompClient = Stomp.over(socket);
 
-        stompClient.connect({"userId": customerId.toString()}, function (frame) {
+        stompClient.connect({
+            "userId": customerId.toString(),
+            "role": "CUSTOMER"
+        }, function (frame) {
             document.getElementById('status').innerText = `Đã kết nối (ID: ${customerId})`;
             document.getElementById('status').style.color = "green";
             document.getElementById('btnBook').disabled = false;

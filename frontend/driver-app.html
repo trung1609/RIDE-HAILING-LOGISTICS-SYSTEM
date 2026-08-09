@@ -379,7 +379,10 @@
 
             let bookSocket = new SockJS(`${WS_BASE_URL}/ws-booking`);
             stompBookingClient = Stomp.over(bookSocket);
-            stompBookingClient.connect({"userId": DRIVER_ID}, function () {
+            stompBookingClient.connect({
+                "userId": DRIVER_ID.toString(),
+                "role": "DRIVER"
+            }, function () {
                 stompBookingClient.subscribe('/user/queue/driver/match', function (message) {
                     let booking = JSON.parse(message.body);
 
