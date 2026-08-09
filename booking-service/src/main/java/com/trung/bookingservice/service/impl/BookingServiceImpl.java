@@ -118,6 +118,7 @@ public class BookingServiceImpl implements BookingService {
                 .endLatitude(request.getEndLatitude())
                 .status(BookingStatus.PENDING)
                 .price(pricingInfo.getTotalPrice())
+                .distanceInKm(pricingInfo.getDistanceInKm())
                 .createdAt(LocalDateTime.now())
                 .build();
         bookingRepository.save(booking);

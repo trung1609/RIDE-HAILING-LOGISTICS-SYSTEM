@@ -35,6 +35,8 @@ public class Booking {
     @Column(nullable = false)
     private Double endLatitude;
 
+    private Double distanceInKm;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private BookingStatus status;
