@@ -1,7 +1,9 @@
 package com.trung.bookingservice.controller;
 
 import com.trung.bookingservice.dto.request.BookingRequest;
+import com.trung.bookingservice.dto.response.ApiResponse;
 import com.trung.bookingservice.dto.response.BookingResponse;
+import com.trung.bookingservice.entity.Booking;
 import com.trung.bookingservice.exception.BadRequestException;
 import com.trung.bookingservice.exception.ResourceNotFoundException;
 import com.trung.bookingservice.service.impl.BookingServiceImpl;
@@ -10,6 +12,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/bookings")
@@ -68,4 +72,9 @@ public class BookingController {
 
         return ResponseEntity.ok(bookingService.cancelBookingByDriver(driverId, bookingId));
     }
+    @GetMapping("/customer")
+    public ResponseEntity<ApiResponse<List<Booking>>> getCustomerBookings(@RequestHeader("X-User-Id") Long customerId) {
+        return ResponseEntity.ok(bookingService.getCustomerBookings(customerId));
+    }
+
 }

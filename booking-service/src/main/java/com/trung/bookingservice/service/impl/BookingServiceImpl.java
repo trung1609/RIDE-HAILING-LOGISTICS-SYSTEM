@@ -2,6 +2,7 @@ package com.trung.bookingservice.service.impl;
 
 import com.trung.bookingservice.dto.request.BookingRequest;
 import com.trung.bookingservice.dto.request.PricingRequest;
+import com.trung.bookingservice.dto.response.ApiResponse;
 import com.trung.bookingservice.dto.response.BookingResponse;
 import com.trung.bookingservice.dto.response.DriverNearbyResponse;
 import com.trung.bookingservice.dto.response.PricingResponse;
@@ -414,6 +415,15 @@ public class BookingServiceImpl implements BookingService {
         );
 
         return response;
+    }
+
+    @Override
+    public ApiResponse<List<Booking>> getCustomerBookings(Long customerId) {
+        List<Booking> history = bookingRepository.findByCustomerIdOrderByCreatedAtDesc(customerId);
+        return ApiResponse.<List<Booking>>builder()
+                .success(true)
+                .data(history)
+                .build();
     }
 
     @Override

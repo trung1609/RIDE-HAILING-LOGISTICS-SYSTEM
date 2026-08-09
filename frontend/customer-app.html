@@ -129,7 +129,22 @@
     2. 🚕 ĐẶT XE NGAY
 </button>
 
+<button id="btnHistory" onclick="toggleBookingHistory()"
+        style="background-color: #17a2b8; color: white; padding: 8px 15px; font-weight: bold; border: none; cursor: pointer; border-radius: 4px; margin-left: 10px;">
+    3. 📜 Lịch sử chuyến đi
+</button>
+
 <div id="status" style="margin-top: 15px; font-weight: bold; color: gray;">Trạng thái: Chưa kết nối</div>
+
+<div id="history-panel" style="display: none; margin-top: 15px; background: #fff; border: 2px solid #17a2b8; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+    <h3 style="color: #17a2b8; margin-top: 0; display: flex; justify-content: space-between;">
+        <span>📜 LỊCH SỬ CHUYẾN ĐI CỦA BẠN</span>
+        <button onclick="toggleBookingHistory()" style="background: none; border: none; font-size: 16px; cursor: pointer; color: red;">❌ Đóng</button>
+    </h3>
+    <button onclick="fetchBookingHistory()" style="margin-bottom: 10px; cursor:pointer; padding: 5px 10px;">🔄 Làm mới dữ liệu</button>
+    <ul id="booking-history-list" style="list-style-type: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto;">
+    </ul>
+</div>
 
 <div class="map-container">
     <div id="map"></div>
@@ -662,6 +677,62 @@
                 }, 3000);
             }
         }).catch(err => alert("Lỗi: " + err.message));
+    }
+
+    function toggleBookingHistory() {
+        let panel = document.getElementById('history-panel');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+            fetchBookingHistory();
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    function fetchBookingHistory() {
+        let listEl = document.getElementById('booking-history-list');
+        listEl.innerHTML = "<li style='padding: 10px; color: gray;'>⏳ Đang tải dữ liệu...</li>";
+
+        let cleanToken = getStoredToken();
+        if (!cleanToken || !customerId) return;
+
+
+        fetchWithAuth(`${API_BASE_URL}/api/v1/bookings/customer`, {
+            method: 'GET',
+            headers: {'X-User-Id': customerId.toString()}
+        })
+            .then(async res => {
+                if (!res.ok) throw new Error("Không thể lấy dữ liệu lịch sử");
+                return res.json();
+            })
+            .then(data => {
+                listEl.innerHTML = "";
+                let bookings = data.data || data;
+
+                if (!Array.isArray(bookings) || bookings.length === 0) {
+                    listEl.innerHTML = "<li style='padding: 10px; color: #555; font-style: italic;'>Bạn chưa có chuyến đi nào.</li>";
+                    return;
+                }
+
+                bookings.reverse().forEach(b => {
+                    let statusColor = b.status === 'COMPLETED' ? 'green' : (b.status === 'CANCELLED' ? 'red' : '#ed6c02');
+                    let displayPrice = b.price ? b.price.toLocaleString('vi-VN') : 0;
+                    let displayId = b.id || b.bookingId;
+                    let dateStr = b.createdAt ? new Date(b.createdAt).toLocaleString('vi-VN') : 'Không rõ thời gian';
+
+                    listEl.innerHTML += `
+                    <li style="border-bottom: 1px solid #eee; padding: 12px 0; line-height: 1.6;">
+                        <div style="font-weight: bold; color: #333; font-size: 15px;">Mã chuyến xe: #${displayId}</div>
+                        <div style="font-size: 14px;">Quãng đường: <b>${b.distanceInKm ? b.distanceInKm.toFixed(2) : '?'} km</b> - Thành tiền: <b style="color: #d32f2f;">${displayPrice} đ</b></div>
+                        <div style="font-size: 14px;">Trạng thái: <span style="color: ${statusColor}; font-weight: bold;">${b.status}</span></div>
+                        <div style="font-size: 12px; color: gray; margin-top: 4px;">📅 Đặt lúc: ${dateStr}</div>
+                    </li>
+                `;
+                });
+            })
+            .catch(err => {
+                listEl.innerHTML = `<li style='padding: 10px; color: red;'>❌ Lỗi: ${err.message}</li>`;
+            });
     }
 </script>
 </body>
