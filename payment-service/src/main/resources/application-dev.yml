@@ -47,18 +47,18 @@ eureka:
       defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
 
 momo:
-  partner-code: ${MOMO_PARTNER_CODE_DEV}
-  access-key: ${MOMO_ACCESS_KEY_DEV}
-  secret-key: ${MOMO_SECRET_KEY_DEV}
-  endpoint: ${MOMO_ENDPOINT_DEV}
-  redirect-url: ${MOMO_REDIRECT_URL_DEV}
-  ipn-url: ${MOMO_IPN_URL_DEV}
+  partner-code: MOMOJH1T20260418_TEST
+  access-key: p35ezPtIupH2eiHu
+  secret-key: UMNByLx4TKWVteSGhwA24bEPnKBVQZWK
+  endpoint: https://test-payment.momo.vn/v2/gateway/api/create
+  redirect-url: http://localhost:8080/api/v1/payments/momo/return
+  ipn-url: https://gluelike-lithographically-willow.ngrok-free.dev/api/v1/payments/momo/ipn
 
 vnpay:
-  tmn-code: ${VNPAY_TMN_CODE_DEV}
-  hash-secret: ${VNPAY_HASH_SECRET_DEV}
-  endpoint: ${VNPAY_ENDPOINT_DEV}
-  return-url: ${VNPAY_RETURN_URL_DEV}
+  tmn-code: RMMQDEPO
+  hash-secret: LRMCGOZFQCNDBTTQWYCYEOQYORMQJPCU
+  endpoint: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+  return-url: http://localhost:8080/api/v1/payments/vnpay/return
 
 logging:
   level:

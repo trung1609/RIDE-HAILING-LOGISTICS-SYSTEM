@@ -681,6 +681,10 @@
                                 if (badge) badge.remove();
                                 if (cancelBtn) cancelBtn.remove();
                                 logSystem(currentBookingId, "COMPLETED", `Khách hàng ID ${customerId} đã thanh toán thành công cuốc xe #${currentBookingId} giá ${currentTripPrice.toLocaleString('vi-VN')} đ qua ${method}.`);
+                            } else if (status === 'CANCELED' || status === 'FAILED') {
+                                clearInterval(paymentCheckInterval);
+                                let badge = document.getElementById('paid-badge');
+                                if (badge) badge.innerText = "❌ Giao dịch đã bị hủy!";
                             }
                         });
                 }, 3000);

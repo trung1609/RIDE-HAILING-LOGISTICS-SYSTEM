@@ -10,6 +10,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -39,6 +40,9 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
+        if (request.getMethod().equals(HttpMethod.OPTIONS)) {
+            return chain.filter(exchange);
+        }
         String path = request.getURI().getPath();
 
         if (EXCLUDE_URLS.stream().anyMatch(path::equals) || path.startsWith("/ws-location")

@@ -85,14 +85,22 @@ public class AuthController {
     private void setRefreshTokenCookie(HttpServletResponse response, String token, long maxAgeMs) {
         long maxAgeSeconds = maxAgeMs / 1000;
         boolean isClearToken = (token == null || token.isEmpty());
-        ResponseCookie cookie = ResponseCookie.from("refresh_token", token)
+        boolean isProduction = false;
+
+        ResponseCookie.ResponseCookieBuilder cookieBuilder = ResponseCookie.from("refresh_token", token)
                 .httpOnly(true)
-                .secure(true)
                 .path("/")
-                .maxAge(isClearToken ? 0 : maxAgeSeconds)
-                .sameSite("None")
-                .domain("ridehailingsystem.online")
-                .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+                .maxAge(isClearToken ? 0 : maxAgeSeconds);
+
+        if (isProduction) {
+            cookieBuilder.secure(true)
+                    .sameSite("None")
+                    .domain("ridehailingsystem.online");
+        } else {
+            cookieBuilder.secure(false)
+                    .sameSite("Lax");
+        }
+
+        response.addHeader(HttpHeaders.SET_COOKIE, cookieBuilder.build().toString());
     }
 }
