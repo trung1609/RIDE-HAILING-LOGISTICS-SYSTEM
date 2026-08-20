@@ -731,7 +731,15 @@
                     let statusColor = b.status === 'COMPLETED' ? 'green' : (b.status === 'CANCELLED' ? 'red' : '#ed6c02');
                     let displayPrice = b.price ? b.price.toLocaleString('vi-VN') : 0;
                     let displayId = b.id || b.bookingId;
-                    let dateStr = b.createdAt ? new Date(b.createdAt).toLocaleString('vi-VN') : 'Không rõ thời gian';
+                    let dateStr = 'Không rõ thời gian';
+                    if (b.createdAt) {
+                        let utcTime = b.createdAt.endsWith('Z') ? b.createdAt : b.createdAt + 'Z';
+                        let dateObj = new Date(utcTime);
+
+                        let time = dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                        let date = dateObj.toLocaleDateString('vi-VN');
+                        dateStr = `${time} ${date}`;
+                    }
 
                     listEl.innerHTML += `
                     <li style="border-bottom: 1px solid #eee; padding: 12px 0; line-height: 1.6;">
