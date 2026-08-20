@@ -727,7 +727,7 @@
                     return;
                 }
 
-                bookings.reverse().forEach(b => {
+                bookings.forEach(b => {
                     let statusColor = b.status === 'COMPLETED' ? 'green' : (b.status === 'CANCELLED' ? 'red' : '#ed6c02');
                     let displayPrice = b.price ? b.price.toLocaleString('vi-VN') : 0;
                     let displayId = b.id || b.bookingId;

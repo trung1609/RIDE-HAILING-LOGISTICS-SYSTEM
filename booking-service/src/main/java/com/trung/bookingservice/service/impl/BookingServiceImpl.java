@@ -450,7 +450,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public BookingResponse completeTrip(Long driverId, Long bookingId) throws ResourceNotFoundException, BadRequestException {
+    public BookingResponse completeTrip(Long driverId, Long bookingId, String paymentMethod) throws ResourceNotFoundException, BadRequestException {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chuyến đi."));
 
@@ -462,16 +462,19 @@ public class BookingServiceImpl implements BookingService {
         booking.setCompletedAt(LocalDateTime.now());
         bookingRepository.save(booking);
 
-        BookingCompletedEvent event = BookingCompletedEvent.builder()
-                .bookingId(booking.getId())
-                .driverId(driverId)
-                .customerId(booking.getCustomerId())
-                .amount(booking.getPrice())
-                .build();
-        kafkaTemplate.send("booking-completed-topic", event);
-        log.info("Đã gửi sự kiện BookingCompletedEvent cho chuyến đi {} đến Kafka.", bookingId);
+        if ("CASH".equalsIgnoreCase(paymentMethod)) {
+            BookingCompletedEvent event = BookingCompletedEvent.builder()
+                    .bookingId(booking.getId())
+                    .driverId(driverId)
+                    .customerId(booking.getCustomerId())
+                    .amount(booking.getPrice())
+                    .build();
+            kafkaTemplate.send("booking-completed-topic", event);
+            log.info("Chuyến đi {} hoàn thành bằng TIỀN MẶT. Đã gửi Kafka thu phí sàn.", bookingId);
+        } else {
+            log.info("Chuyến đi {} hoàn thành qua APP. Đang chờ khách thanh toán...", bookingId);
+        }
 
-        log.info("Chuyến đi {} đã HOÀN THÀNH.", bookingId);
         userDriverClient.updateDriverStatusInternal(driverId, DriverStatus.ONLINE);
 
         BookingResponse response = convertToResponse(booking, LocationUtils.calculateDistance(

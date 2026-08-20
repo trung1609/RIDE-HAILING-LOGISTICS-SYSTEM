@@ -146,6 +146,7 @@
     let DRIVER_ID = null;
     let driverTimerInterval = null;
     let depositCheckInterval = null;
+    let driverPaymentCheckInterval = null; // ⚡ Bổ sung biến đếm chờ tiền khách trả
     let map = null;
     let carMarker = null;
     let isOnTrip = false;
@@ -421,6 +422,7 @@
         document.getElementById('match-box').style.display = "none";
         clearInterval(driverTimerInterval);
         clearInterval(depositCheckInterval);
+        clearInterval(driverPaymentCheckInterval); // Xóa bộ đếm thanh toán
         isOnTrip = false;
     }
 
@@ -473,6 +475,7 @@
         callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/accept`, "Đã nhận cuốc!", nextButtons, 'accept');
     }
 
+    // ⚡ Đã sửa để render 2 nút Tiền mặt & App thay vì 1 nút Complete cũ
     function updateTripStatus(endpointAction, successMsg, nextActionKey) {
         let cleanToken = getStoredToken();
         if (!cleanToken) return;
@@ -484,9 +487,98 @@
                 <button onclick="driverCancelRide()" style="background-color: #dc3545; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; margin-left: 10px;">HỦY CUỐC XE</button>
             `;
         } else if (nextActionKey === 'complete') {
-            nextBtn = `<button onclick="updateTripStatus('complete', 'Chuyến đi kết thúc!', '')" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold;">HOÀN THÀNH CHUYẾN ĐI</button>`;
+            nextBtn = `
+                <div style="margin-top: 10px; padding: 10px; background: #e9ecef; border-radius: 5px; text-align: center;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold; color: #dc3545;">Thu tiền cước từ khách:</p>
+                    <button onclick="finishTrip('CASH')" style="background-color: #28a745; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; border-radius: 5px; width: 48%;">💵 TIỀN MẶT</button>
+                    <button onclick="finishTrip('APP')" style="background-color: #007bff; color: white; padding: 8px 15px; border: none; cursor: pointer; font-weight: bold; border-radius: 5px; width: 48%;">💳 TRẢ QUA APP</button>
+                </div>
+            `;
         }
         callBookingApi(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/${endpointAction}`, successMsg, nextBtn, endpointAction);
+    }
+
+    // ⚡ Bổ sung hàm xử lý Logic thanh toán khi chốt cuốc
+    function finishTrip(paymentMethod) {
+        if (!currentBookingId) return;
+
+        let confirmMsg = paymentMethod === 'CASH'
+            ? "Xác nhận ĐÃ THU TIỀN MẶT từ khách hàng?"
+            : "Xác nhận hoàn thành cuốc và YÊU CẦU KHÁCH THANH TOÁN QUA APP (MoMo/VNPay)?";
+
+        if (!confirm(confirmMsg)) return;
+
+        let actionButtons = document.getElementById('action-buttons');
+        let originalButtons = actionButtons.innerHTML;
+        actionButtons.innerHTML = `<i style="color: gray;">Hệ thống đang xử lý...</i>`;
+
+        fetchWithAuth(`${API_BASE_URL}/api/v1/bookings/${currentBookingId}/complete?paymentMethod=${paymentMethod}`, {
+            method: 'PUT',
+            headers: {'X-User-Id': DRIVER_ID}
+        }).then(async res => {
+            if (!res.ok) {
+                let err = await res.json().catch(() => ({}));
+                throw new Error(err.message || "Không thể hoàn thành chuyến đi");
+            }
+            return res.json();
+        }).then(data => {
+            document.getElementById('box-title').innerText = `🚀 TRẠNG THÁI: COMPLETED`;
+
+            if (paymentMethod === 'CASH') {
+                actionButtons.innerHTML = `<i>Đã hoàn tất bằng TIỀN MẶT!</i>`;
+                alert("✅ Hoàn thành chuyến đi bằng TIỀN MẶT!\nHệ thống đã tự động trừ 20% phí sàn.");
+                setTimeout(() => fetchWallet(), 1500);
+                setTimeout(() => closeMatchBoxAndReset(), 1500);
+            } else {
+                // CHẾ ĐỘ CHỜ KHÁCH THANH TOÁN
+                actionButtons.innerHTML = `
+                    <div id="waiting-payment-alert" style="margin-top: 10px; padding: 10px; background-color: #fff3cd; color: #856404; font-weight: bold; border-radius: 5px; border: 1px solid #ffeeba;">
+                        ⏳ Đang chờ khách thanh toán qua Ví MoMo/VNPay...
+                    </div>
+                `;
+
+                clearInterval(driverPaymentCheckInterval);
+                let pollCount = 0;
+
+                driverPaymentCheckInterval = setInterval(() => {
+                    pollCount++;
+                    fetchWithAuth(`${API_BASE_URL}/api/v1/payments/booking/${currentBookingId}/payment-status`)
+                        .then(res => res.text())
+                        .then(status => {
+                            if (status === 'SUCCESS') {
+                                clearInterval(driverPaymentCheckInterval);
+                                actionButtons.innerHTML = `<div style="padding: 10px; background-color: #d4edda; color: #155724; font-weight: bold; border-radius: 5px; text-align: center;">✅ Khách đã thanh toán thành công!</div>`;
+                                alert("🎉 TING TING! KHÁCH HÀNG ĐÃ THANH TOÁN THÀNH CÔNG.\nTiền cước đã được cộng thẳng vào ví của bạn.");
+                                fetchWallet();
+                                fetchTransactions();
+                                setTimeout(() => closeMatchBoxAndReset(), 2500);
+                            }
+                        });
+
+                    if (pollCount >= 60) { // Chờ tối đa 3 phút
+                        clearInterval(driverPaymentCheckInterval);
+                        let alertBox = document.getElementById('waiting-payment-alert');
+                        if (alertBox) {
+                            alertBox.innerHTML = "⚠️ Khách hàng chưa thanh toán! Vui lòng nhắc nhở khách.";
+                            alertBox.style.backgroundColor = "#f8d7da";
+                            alertBox.style.color = "#721c24";
+                            alertBox.style.borderColor = "#f5c6cb";
+                            alertBox.innerHTML += `<br><button onclick="closeMatchBoxAndReset()" style="margin-top:10px; padding:6px 12px; cursor:pointer; font-weight:bold; border-radius:4px;">Đóng Hộp Thoại Này</button>`;
+                        }
+                    }
+                }, 3000);
+            }
+        }).catch(err => {
+            alert("Lỗi: " + err.message);
+            actionButtons.innerHTML = originalButtons; // Lỗi thì hiện lại nút cũ
+        });
+    }
+
+    function closeMatchBoxAndReset() {
+        document.getElementById('match-box').style.display = "none";
+        currentBookingId = null;
+        isOnTrip = false;
+        document.getElementById('log').innerHTML += `<li style="color:gray;">🔄 Trở lại tìm cuốc mới...</li>`;
     }
 
     function driverCancelRide() {
@@ -525,16 +617,7 @@
             alert(successMessage);
             document.getElementById('box-title').innerText = `🚀 TRẠNG THÁI: ${data.status}`;
 
-            if (actionType === 'complete') {
-                document.getElementById('action-buttons').innerHTML = `<i>Đã hoàn tất!</i>`;
-                setTimeout(() => fetchWallet(), 1500);
-                setTimeout(() => {
-                    document.getElementById('match-box').style.display = "none";
-                    currentBookingId = null;
-                    isOnTrip = false;
-                    document.getElementById('log').innerHTML += `<li style="color:gray;">🔄 Trở lại tìm cuốc mới...</li>`;
-                }, 1500);
-            } else {
+            if (actionType !== 'complete') {
                 document.getElementById('action-buttons').innerHTML = nextButtonHtml;
             }
 
@@ -616,8 +699,7 @@
                                         alert(`🎉 NẠP TIỀN THÀNH CÔNG!\nVí của bạn đã được cộng +${currentTx.amount.toLocaleString('vi-VN')} VND.`);
                                         fetchWallet();
                                         fetchTransactions();
-                                    }
-                                    else if (currentTx.status === 'CANCELED' || currentTx.status === 'CANCELLED' || currentTx.status === 'FAILED') {
+                                    } else if (currentTx.status === 'CANCELED' || currentTx.status === 'CANCELLED' || currentTx.status === 'FAILED') {
                                         clearInterval(depositCheckInterval);
                                         alert("❌ Giao dịch nạp tiền đã bị hủy hoặc thất bại!");
                                         fetchTransactions();
@@ -626,7 +708,6 @@
                             }
                         }).catch(err => console.warn("Lỗi kiểm tra giao dịch:", err));
 
-                    // Tự động tắt ngầm sau 40 lần (khoảng 2 phút) nếu không có phản hồi
                     if (pollCount >= 40) clearInterval(depositCheckInterval);
 
                 }, 3000);
@@ -634,6 +715,7 @@
         }).catch(err => alert("Lỗi: " + err.message));
     }
 
+    // ⚡ Đã xử lý lại format UTC để hiển thị chuẩn giờ VN
     function fetchTransactions() {
         let listEl = document.getElementById('tx-list');
         if (listEl.style.display === "block") {
@@ -663,7 +745,6 @@
 
                 txList.forEach(tx => {
                     let isIncome = (tx.transactionType === 'DEPOSIT' || tx.transactionType === 'TRIP_INCOME');
-
                     let isFailedOrCanceled = (tx.status === 'CANCELED' || tx.status === 'CANCELLED' || tx.status === 'FAILED');
 
                     let color = isIncome ? 'green' : 'red';
@@ -688,12 +769,25 @@
                         desc = tx.transactionType;
                     }
 
+                    // ⚡ Ép đuôi 'Z' để cộng chuẩn 7 tiếng
+                    let dateStr = '';
+                    if (tx.createdAt) {
+                        let utcTime = tx.createdAt.endsWith('Z') ? tx.createdAt : tx.createdAt + 'Z';
+                        let dateObj = new Date(utcTime);
+                        let time = dateObj.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
+                        let date = dateObj.toLocaleDateString('vi-VN');
+                        dateStr = `${time} ${date}`;
+                    }
+
                     listEl.innerHTML += `
-                <li style="border-bottom:1px solid #eee; padding:10px 0; line-height: 1.5;">
-                    <div style="font-weight:bold; color: ${isFailedOrCanceled ? 'gray' : '#333'};">${desc}</div>
-                    <span style="color:${color}; font-size: 16px; font-weight:bold; text-decoration:${textDecoration};">${sign}${tx.amount.toLocaleString('vi-VN')} đ</span>
-                    <i style="color:gray; font-size:12px; margin-left: 5px;">(${tx.status})</i>
-                </li>`;
+                    <li style="border-bottom:1px solid #eee; padding:10px 0; line-height: 1.5;">
+                        <div style="font-weight:bold; color: ${isFailedOrCanceled ? 'gray' : '#333'};">${desc}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                            <span style="color:${color}; font-size: 16px; font-weight:bold; text-decoration:${textDecoration};">${sign}${tx.amount.toLocaleString('vi-VN')} đ</span>
+                            <span style="color:gray; font-size: 12px;">🕒 ${dateStr}</span>
+                        </div>
+                        <i style="color:gray; font-size:12px;">(${tx.status})</i>
+                    </li>`;
                 });
                 listEl.style.display = "block";
             })

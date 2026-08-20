@@ -29,6 +29,7 @@ public class BookingController {
 
         return ResponseEntity.ok(bookingService.createBooking(customerId, request));
     }
+
     @PutMapping("/{bookingId}/accept")
     public ResponseEntity<BookingResponse> acceptBooking(
             @RequestHeader("X-User-Id") Long driverId,
@@ -37,6 +38,7 @@ public class BookingController {
         BookingResponse response = bookingService.acceptBooking(driverId, bookingId);
         return ResponseEntity.ok(response);
     }
+
     @PutMapping("/{bookingId}/arrived")
     public ResponseEntity<BookingResponse> arriveAtPickup(
             @RequestHeader("X-User-Id") Long driverId,
@@ -54,8 +56,9 @@ public class BookingController {
     @PutMapping("/{bookingId}/complete")
     public ResponseEntity<BookingResponse> completeTrip(
             @RequestHeader("X-User-Id") Long driverId,
-            @PathVariable Long bookingId) throws BadRequestException, ResourceNotFoundException {
-        return ResponseEntity.ok(bookingService.completeTrip(driverId, bookingId));
+            @PathVariable Long bookingId,
+            @RequestParam(defaultValue = "CASH") String paymentMethod) throws BadRequestException, ResourceNotFoundException {
+        return ResponseEntity.ok(bookingService.completeTrip(driverId, bookingId, paymentMethod));
     }
 
     @PutMapping("/{bookingId}/cancel")
@@ -72,6 +75,7 @@ public class BookingController {
 
         return ResponseEntity.ok(bookingService.cancelBookingByDriver(driverId, bookingId));
     }
+
     @GetMapping("/customer")
     public ResponseEntity<ApiResponse<List<Booking>>> getCustomerBookings(@RequestHeader("X-User-Id") Long customerId) {
         return ResponseEntity.ok(bookingService.getCustomerBookings(customerId));
