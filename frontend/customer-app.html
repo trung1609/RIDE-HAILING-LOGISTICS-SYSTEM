@@ -472,10 +472,30 @@
                     document.getElementById('customer-timer').style.display = "none";
                     stopRadar();
 
-                    if ((bookingInfo.status === 'ACCEPTED' || bookingInfo.status === 'COMPLETED') && !hasInitiatedPayment) {
+                    if (bookingInfo.status === 'ACCEPTED' && !hasInitiatedPayment) {
                         document.getElementById('btnPayMomo').style.display = "inline-block";
                         document.getElementById('btnPayVnpay').style.display = "inline-block";
-                    } else {
+                    }
+                    else if (bookingInfo.status === 'COMPLETED' && !hasInitiatedPayment) {
+                        if (bookingInfo.paymentMethod === 'CASH') {
+                            document.getElementById('btnPayMomo').style.display = "none";
+                            document.getElementById('btnPayVnpay').style.display = "none";
+                            document.getElementById('trip-status-text').innerHTML = `Mã chuyến: #${bookingInfo.bookingId} | <span style="color: green;">ĐÃ THANH TOÁN (TIỀN MẶT)</span>`;
+                            alert("✅ Tài xế đã xác nhận thu TIỀN MẶT. Chuyến đi kết thúc!");
+
+                            setTimeout(() => {
+                                document.getElementById('trip-card').style.display = "none";
+                                currentBookingId = null;
+                            }, 3000);
+                        }
+                        else if (bookingInfo.paymentMethod === 'APP') {
+                            document.getElementById('btnPayMomo').style.display = "inline-block";
+                            document.getElementById('btnPayVnpay').style.display = "inline-block";
+                            document.getElementById('trip-status-text').innerHTML = `Mã chuyến: #${bookingInfo.bookingId} | <span style="color: red;">ĐANG CHỜ BẠN THANH TOÁN QUA APP</span>`;
+                            alert("⚠️ Tài xế yêu cầu thanh toán cước phí qua Ứng Dụng. Vui lòng chọn cổng thanh toán!");
+                        }
+                    }
+                    else {
                         document.getElementById('btnPayMomo').style.display = "none";
                         document.getElementById('btnPayVnpay').style.display = "none";
                     }

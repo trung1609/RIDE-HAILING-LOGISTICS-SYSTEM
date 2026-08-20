@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/bookings")
@@ -79,6 +80,11 @@ public class BookingController {
     @GetMapping("/customer")
     public ResponseEntity<ApiResponse<List<Booking>>> getCustomerBookings(@RequestHeader("X-User-Id") Long customerId) {
         return ResponseEntity.ok(bookingService.getCustomerBookings(customerId));
+    }
+
+    @GetMapping("/driver/daily-report")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getDailyReport(@RequestHeader("X-User-Id") Long driverId) {
+        return ResponseEntity.ok(bookingService.getDriverDailyReport(driverId));
     }
 
 }

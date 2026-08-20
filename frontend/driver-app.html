@@ -118,6 +118,24 @@
     <button class="history-btn" onclick="fetchTransactions()">Xem lịch sử giao dịch</button>
     <ul id="tx-list"
         style="margin-top: 15px; font-size: 14px; background: #fff; padding: 10px; border-radius: 5px; max-height: 150px; overflow-y: auto; display: none;"></ul>
+
+    <button class="history-btn" onclick="fetchDailyReport()" style="background-color: #fd7e14;">📊 Báo cáo hôm nay</button>
+
+    <div id="daily-report-panel" style="display: none; margin-top: 15px; background: #fff; padding: 15px; border-radius: 8px; border: 2px dashed #fd7e14;">
+        <h4 style="margin-top: 0; color: #fd7e14;">📈 TỔNG KẾT DOANH THU NGÀY HÔM NAY</h4>
+        <div style="font-size: 15px; line-height: 1.8;">
+            <div>🚗 Tổng số cuốc xe hoàn thành: <b id="rep-trips" style="color: blue;">0</b> cuốc</div>
+            <hr style="border-top: 1px solid #eee;">
+            <div>💰 Tổng doanh thu cước phí: <b id="rep-revenue">0 đ</b></div>
+            <div>💵 <b>Tiền mặt đang cầm của khách: <span id="rep-cash" style="color: green;">0 đ</span></b></div>
+            <div>💳 Tiền khách trả qua App: <b id="rep-app">0 đ</b></div>
+            <hr style="border-top: 1px solid #eee;">
+            <div>📉 Tổng phí sàn đã trừ (20%): <b id="rep-commission" style="color: red;">-0 đ</b></div>
+            <div style="margin-top: 10px; padding: 10px; background: #e2f0d9; color: #274e13; font-weight: bold; border-radius: 5px; text-align: center;">
+                ✨ Thu nhập ròng của bạn: <span id="rep-net-income" style="font-size: 18px;">0 đ</span>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div id="map"></div>
@@ -831,6 +849,40 @@
             alert(`✅ Đã thực hiện lệnh rút thành công ${amount.toLocaleString('vi-VN')} đ về tài khoản ngân hàng của bạn!`);
             fetchWallet();
         }).catch(err => alert("❌ THAO TÁC THẤT BẠI: \n" + err.message));
+    }
+
+    function fetchDailyReport() {
+        let panel = document.getElementById('daily-report-panel');
+        if (panel.style.display === 'block') {
+            panel.style.display = 'none';
+            return;
+        }
+
+        fetchWithAuth(`${API_BASE_URL}/api/v1/bookings/driver/daily-report`, {
+            method: 'GET',
+            headers: { 'X-User-Id': DRIVER_ID }
+        })
+            .then(async res => {
+                if (!res.ok) throw new Error("Không thể lấy dữ liệu báo cáo");
+                return res.json();
+            })
+            .then(data => {
+                let report = data.data || data;
+
+                document.getElementById('rep-trips').innerText = report.totalTrips;
+                document.getElementById('rep-revenue').innerText = report.totalRevenue.toLocaleString('vi-VN') + " đ";
+                document.getElementById('rep-cash').innerText = report.cashCollected.toLocaleString('vi-VN') + " đ";
+                document.getElementById('rep-app').innerText = report.appCollected.toLocaleString('vi-VN') + " đ";
+                document.getElementById('rep-commission').innerText = "-" + report.commissionFee.toLocaleString('vi-VN') + " đ";
+
+                let netIncome = report.totalRevenue - report.commissionFee;
+                document.getElementById('rep-net-income').innerText = netIncome.toLocaleString('vi-VN') + " đ";
+
+                panel.style.display = 'block';
+            })
+            .catch(err => {
+                alert("Lỗi tải báo cáo: " + err.message);
+            });
     }
 </script>
 </body>

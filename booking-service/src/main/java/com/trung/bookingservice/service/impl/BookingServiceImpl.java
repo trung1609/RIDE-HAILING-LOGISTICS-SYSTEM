@@ -30,7 +30,10 @@ import org.springframework.transaction.support.TransactionSynchronizationAdapter
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -460,6 +463,7 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.COMPLETED);
         booking.setCompletedAt(LocalDateTime.now());
+        booking.setPaymentMethod(paymentMethod);
         bookingRepository.save(booking);
 
         if ("CASH".equalsIgnoreCase(paymentMethod)) {
@@ -482,13 +486,54 @@ public class BookingServiceImpl implements BookingService {
                 booking.getEndLatitude(), booking.getEndLongitude()
         ));
 
+        Map<String, Object> wsMessage = new HashMap<>();
+        wsMessage.put("bookingId", response.getBookingId());
+        wsMessage.put("status", response.getStatus().toString());
+        wsMessage.put("driverId", response.getDriverId());
+        wsMessage.put("price", response.getPrice());
+        wsMessage.put("paymentMethod", paymentMethod);
+
         messagingTemplate.convertAndSendToUser(
                 booking.getCustomerId().toString(),
                 "/queue/booking/status",
-                response
+                wsMessage
         );
 
         return response;
+    }
+
+    @Override
+    public ApiResponse<Map<String, Object>> getDriverDailyReport(Long driverId) {
+        LocalDateTime startOfDay = LocalDateTime.now().with(LocalTime.MIN);
+        LocalDateTime endOfDay = LocalDateTime.now().with(LocalTime.MAX);
+
+        List<Booking> todayBookings = bookingRepository.findCompletedBookingsByDriverToday(driverId, startOfDay, endOfDay);
+
+        int totalTrips = todayBookings.size();
+        double totalRevenue = 0;
+        double cashCollected = 0;
+        double appCollected = 0;
+
+        for (Booking b : todayBookings) {
+            totalRevenue += b.getPrice();
+            if ("CASH".equalsIgnoreCase(b.getPaymentMethod())) {
+                cashCollected += b.getPrice();
+            } else if ("APP".equalsIgnoreCase(b.getPaymentMethod())) {
+                appCollected += b.getPrice();
+            }
+        }
+
+        Map<String, Object> report = new HashMap<>();
+        report.put("totalTrips", totalTrips);
+        report.put("totalRevenue", totalRevenue);
+        report.put("cashCollected", cashCollected);
+        report.put("appCollected", appCollected);
+        report.put("commissionFee", totalRevenue * 0.20);
+
+        return ApiResponse.<java.util.Map<String, Object>>builder()
+                .success(true)
+                .data(report)
+                .build();
     }
 
     private BookingResponse convertToResponse(Booking booking, double distance) {

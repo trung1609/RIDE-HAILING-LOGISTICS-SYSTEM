@@ -43,6 +43,8 @@ public class Booking {
 
     private Double price;
 
+    private String paymentMethod;
+
     private LocalDateTime createdAt;
     private LocalDateTime acceptedAt;
     private LocalDateTime completedAt;
