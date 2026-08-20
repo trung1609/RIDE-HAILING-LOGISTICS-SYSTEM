@@ -137,7 +137,15 @@ public class BookingReassignService {
 
             BookingResponse cancelResponse = BookingResponse.builder()
                     .bookingId(finalBooking.getId())
-                    .status(finalBooking.getStatus())
+                    .customerId(finalBooking.getCustomerId())
+                    .driverId(finalBooking.getDriverId())
+                    .startLongitude(finalBooking.getStartLongitude())
+                    .startLatitude(finalBooking.getStartLatitude())
+                    .endLongitude(finalBooking.getEndLongitude())
+                    .endLatitude(finalBooking.getEndLatitude())
+                    .distanceInKm(0.0)
+                    .price(finalBooking.getPrice())
+                    .status(BookingStatus.CANCELLED)
                     .build();
 
             // Báo về cho khách hàng biết là chịu chết, không tìm được xe

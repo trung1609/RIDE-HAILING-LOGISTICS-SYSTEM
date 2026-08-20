@@ -1,11 +1,11 @@
 server:
-  port: ${PAYMENT_SERVICE_PORT:8085}
+  port: 8085
 
 spring:
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${PAYMENT_DATABASE:payment_db}
-    username: ${POSTGRES_USER:postgres}
-    password: ${POSTGRES_PASSWORD:123456}
+    url: jdbc:postgresql://localhost:5432/payment_db
+    username: postgres
+    password: 123456
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -14,9 +14,9 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-    show-sql: true
+    show-sql: false
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: localhost:9092
     consumer:
       group-id: payment-service
       auto-offset-reset: earliest
@@ -44,7 +44,7 @@ eureka:
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+      defaultZone: http://localhost:8761/eureka/
 
 momo:
   partner-code: MOMOJH1T20260418_TEST
@@ -65,8 +65,8 @@ logging:
     root: INFO
     com.trung: DEBUG
 
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.SQL: INFO
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO
 
     org.springframework: INFO
     org.apache.kafka: INFO

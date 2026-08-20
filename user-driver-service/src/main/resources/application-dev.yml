@@ -1,11 +1,11 @@
 server:
-  port: ${USER_DRIVER_SERVICE_PORT:8081}
+  port: 8081
 
 spring:
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${USER_DRIVER_DATABASE:ride_hailing_db}
-    username: ${POSTGRES_USER:postgres}
-    password: ${POSTGRES_PASSWORD:123456}
+    url: jdbc:postgresql://localhost:5432/ride_hailing_db
+    username: postgres
+    password: 123456
     driver-class-name: org.postgresql.Driver
   jpa:
     show-sql: true
@@ -17,11 +17,11 @@ spring:
       ddl-auto: update
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: localhost
+      port: 6379
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: localhost:9092
     producer:
       acks: all
       retries: 3
@@ -36,14 +36,14 @@ eureka:
     fetch-registry: true
     register-with-eureka: true
     service-url:
-      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+      defaultZone: http://localhost:8761/eureka/
   instance:
     prefer-ip-address: true
 
 jwt:
-  secret: ${JWT_SECRET:DayLaChuoiBiMatMacDinhCuaToiChoMoiTruongDev123456}
-  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:86400000}
-  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:604800000}
+  secret: DayLaChuoiBiMatMacDinhCuaToiChoMoiTruongDev123456
+  access-token-expiration: 86400000
+  refresh-token-expiration: 604800000
 
 management:
   endpoints:

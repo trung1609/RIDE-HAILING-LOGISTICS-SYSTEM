@@ -14,7 +14,7 @@ spring:
             - id: user-driver-route
               uri: lb://user-driver-service
               predicates:
-                - Path=/api/v1/auth/**, /api/v1/users/**, /api/v1/drivers/**
+                - Path=/api/v1/auth/**,/api/v1/users/**,/api/v1/drivers/**
             - id: location-service-route
               uri: lb://location-service
               predicates:
@@ -39,18 +39,6 @@ spring:
               uri: lb://payment-service
               predicates:
                 - Path=/api/v1/payments/**
-          globalcors:
-            cors-configurations:
-              '[/**]':
-                allowedOriginPatterns: "*"
-                allowedMethods:
-                  - GET
-                  - POST
-                  - PUT
-                  - DELETE
-                  - OPTIONS
-                allowedHeaders: "*"
-                allowCredentials: true
 
 management:
   endpoints:

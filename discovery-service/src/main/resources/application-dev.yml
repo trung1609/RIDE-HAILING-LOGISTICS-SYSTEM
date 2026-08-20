@@ -1,14 +1,14 @@
 server:
-  port: ${DISCOVERY_SERVICE_PORT:8761}
+  port: 8761
 
 eureka:
   instance:
-    hostname: ${EUREKA_HOSTNAME:localhost}
+    hostname: localhost
   client:
     register-with-eureka: false
     fetch-registry: false
     service-url:
-      defaultZone: http://${EUREKA_HOSTNAME:localhost}:${DISCOVERY_SERVICE_PORT:8761}/eureka/
+      defaultZone: http://localhost:8761/eureka/
 
 management:
   endpoints:
@@ -30,4 +30,3 @@ logging:
 
     org.springframework: INFO
     org.apache.kafka: INFO
-

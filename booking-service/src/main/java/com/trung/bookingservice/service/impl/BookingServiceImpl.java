@@ -336,16 +336,8 @@ public class BookingServiceImpl implements BookingService {
                 BookingResponse driverCancelCommand = convertToResponse(booking, distance);
                 driverCancelCommand.setStatus(BookingStatus.CANCELLED);
 
-                TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronizationAdapter() {
-                            @Override
-                            public void afterCommit() {
-                                messagingTemplate.convertAndSendToUser(driverId.toString(), "/queue/driver/match", driverCancelCommand);
-
-                                bookingReassignService.reassignNewDriverAsync(bookingId, booking.getStartLongitude(), booking.getStartLatitude(), distance);
-                            }
-                        }
-                );
+                messagingTemplate.convertAndSendToUser(driverId.toString(), "/queue/driver/match", driverCancelCommand);
+                bookingReassignService.reassignNewDriverAsync(bookingId, booking.getStartLongitude(), booking.getStartLatitude(), distance);
                 return convertToResponse(booking, distance);
             } else {
                 throw new BadRequestException("Cuốc xe này đã được luân chuyển cho người khác.");
